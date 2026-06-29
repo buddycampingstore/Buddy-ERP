@@ -1,20 +1,41 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Buddy ERP
 
-# Run and deploy your AI Studio app
-
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/0f5142ac-9a4d-4baa-ab86-dbbdb14a70e3
+Backoffice สำหรับจัดการสินค้า สต็อก WAC ลูกค้า ออเดอร์ การจัดส่ง และรายงาน โดยซิงค์ข้อมูลผ่าน Supabase
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
-
-
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+
+   ```bash
+   npm install
+   ```
+
+2. Create `.env.local` and set your current Supabase project values:
+
+   ```bash
+   VITE_SUPABASE_URL="https://your-project.supabase.co"
+   VITE_SUPABASE_ANON_KEY="your-current-anon-public-key"
+   VITE_SUPABASE_TABLE="buddy_erp_backoffice"
+   ```
+
 3. Run the app:
-   `npm run dev`
+
+   ```bash
+   npm run dev
+   ```
+
+## Supabase Setup
+
+Run [database.sql](database.sql) in Supabase SQL Editor. The current app-compatible table is:
+
+```sql
+create table if not exists public.buddy_erp_backoffice (
+  id text primary key,
+  data jsonb not null,
+  updated_at timestamptz not null default timezone('utc'::text, now())
+);
+
+alter table public.buddy_erp_backoffice disable row level security;
+```
+
+After login, open "ตั้งค่า / สำรองข้อมูล" to set the table name, upload local data, or pull data from Supabase.

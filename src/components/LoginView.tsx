@@ -100,7 +100,7 @@ export function LoginView({
             type: 'success',
             text: 'สมัครสมาชิกและเข้าสู่ระบบสำเร็จ!'
           });
-          sessionStorage.setItem('campchair_is_authenticated', 'true');
+          sessionStorage.setItem('buddy_erp_is_authenticated', 'true');
           setTimeout(() => onLoginSuccess(), 1000);
         } else {
           setSupabaseMessage({
@@ -119,7 +119,7 @@ export function LoginView({
           throw error;
         }
 
-        sessionStorage.setItem('campchair_is_authenticated', 'true');
+        sessionStorage.setItem('buddy_erp_is_authenticated', 'true');
         onLoginSuccess();
       }
     } catch (err: any) {
@@ -333,7 +333,7 @@ export function LoginView({
                   <input
                     type="url"
                     required
-                    placeholder="เช่น https://yourproject.supabase.co"
+                    placeholder="เช่น https://your-project.supabase.co"
                     value={inputUrl}
                     onChange={(e) => setInputUrl(e.target.value)}
                     className="w-full text-[11px] p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-300 placeholder-slate-600 outline-none focus:border-emerald-600 font-mono"

@@ -20,9 +20,18 @@ import {
   DeliveryType, 
   DeliveryStatus 
 } from '../types';
-import { INITIAL_DATABASE } from '../initialData';
 
-const LOCAL_STORAGE_KEY = 'campchair_backoffice_db';
+const LOCAL_STORAGE_KEY = 'buddy_erp_database';
+const EMPTY_DATABASE: AppDatabase = {
+  brands: [],
+  models: [],
+  variants: [],
+  purchaseBatches: [],
+  stockItems: [],
+  customers: [],
+  orders: [],
+  deliveries: []
+};
 
 export function useDatabase() {
   const [db, setDb] = useState<AppDatabase>(() => {
@@ -36,9 +45,9 @@ export function useDatabase() {
         }
       }
     } catch (e) {
-      console.error('Error loading database from local storage, using initial data:', e);
+      console.error('Error loading database from local storage, using empty database:', e);
     }
-    return INITIAL_DATABASE;
+    return EMPTY_DATABASE;
   });
 
   // Save database to localStorage on modify
@@ -495,21 +504,11 @@ export function useDatabase() {
   };
 
   const resetDatabase = () => {
-    setDb(INITIAL_DATABASE);
+    setDb(EMPTY_DATABASE);
   };
 
   const clearDatabase = () => {
-    const emptyDb: AppDatabase = {
-      brands: [],
-      models: [],
-      variants: [],
-      purchaseBatches: [],
-      stockItems: [],
-      customers: [],
-      orders: [],
-      deliveries: []
-    };
-    setDb(emptyDb);
+    setDb(EMPTY_DATABASE);
   };
 
   return {

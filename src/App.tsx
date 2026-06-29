@@ -21,24 +21,19 @@ import {
   PlusSquare, 
   ShoppingBag, 
   Truck, 
-  Users, 
   Settings, 
-  HelpCircle,
   Menu,
   X,
   FileDown,
   FileUp,
   RotateCcw,
-  Tent,
   Database,
   CloudUpload,
   CloudDownload,
   RefreshCw,
   Copy,
   Check,
-  LogOut,
-  Key,
-  Lock
+  LogOut
 } from 'lucide-react';
 
 type TabType = 'dashboard' | 'products' | 'purchase' | 'orders' | 'deliveries' | 'reports' | 'backup';
@@ -73,6 +68,8 @@ export default function App() {
     setUrl: setSupabaseUrl,
     anonKey: supabaseAnonKey,
     setAnonKey: setSupabaseAnonKey,
+    tableName: supabaseTableName,
+    setTableName: setSupabaseTableName,
     rowId: supabaseRowId,
     setRowId: setSupabaseRowId,
     autoSync: supabaseAutoSync,
@@ -95,7 +92,7 @@ export default function App() {
     supabaseClient.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setIsAuthenticated(true);
-        sessionStorage.setItem('campchair_is_authenticated', 'true');
+        sessionStorage.setItem('buddy_erp_is_authenticated', 'true');
       }
     });
 
@@ -103,11 +100,11 @@ export default function App() {
     const { data: { subscription } } = supabaseClient.auth.onAuthStateChange((event, session) => {
       if (session) {
         setIsAuthenticated(true);
-        sessionStorage.setItem('campchair_is_authenticated', 'true');
+        sessionStorage.setItem('buddy_erp_is_authenticated', 'true');
       } else {
         if (event === 'SIGNED_OUT') {
           setIsAuthenticated(false);
-          sessionStorage.removeItem('campchair_is_authenticated');
+          sessionStorage.removeItem('buddy_erp_is_authenticated');
         }
       }
     });
@@ -122,26 +119,8 @@ export default function App() {
 
   // --- AUTHENTICATION STATE ---
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return sessionStorage.getItem('campchair_is_authenticated') === 'true';
+    return sessionStorage.getItem('buddy_erp_is_authenticated') === 'true';
   });
-  const [configUser, setConfigUser] = useState(() => localStorage.getItem('campchair_login_user') || 'admin');
-  const [configPass, setConfigPass] = useState(() => localStorage.getItem('campchair_login_pass') || 'buddycamping');
-  const [isSavingCreds, setIsSavingCreds] = useState(false);
-
-  const handleSaveCredentials = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!configUser.trim() || !configPass.trim()) {
-      alert('กรุณากรอกข้อมูลชื่อผู้ใช้งานและรหัสผ่านให้ครบถ้วน');
-      return;
-    }
-    localStorage.setItem('campchair_login_user', configUser.trim());
-    localStorage.setItem('campchair_login_pass', configPass.trim());
-    setIsSavingCreds(true);
-    setTimeout(() => {
-      setIsSavingCreds(false);
-      alert('บันทึกชื่อผู้ใช้และรหัสผ่านเข้าสู่ระบบระบบใหม่สำเร็จ!');
-    }, 500);
-  };
 
   const handleLogout = async () => {
     if (window.confirm('คุณแน่ใจหรือไม่ว่าต้องการออกจากระบบเพื่อความปลอดภัย?')) {
@@ -152,7 +131,7 @@ export default function App() {
           console.error(e);
         }
       }
-      sessionStorage.removeItem('campchair_is_authenticated');
+      sessionStorage.removeItem('buddy_erp_is_authenticated');
       setIsAuthenticated(false);
       setMobileMenuOpen(false);
     }
@@ -161,14 +140,40 @@ export default function App() {
   // --- BACKUP PANEL STATE ---
   const [backupInput, setBackupInput] = useState('');
   const [copiedSql, setCopiedSql] = useState(false);
-  const sqlCode = `create table if not exists campchair_backoffice (
+  const [supabaseFormUrl, setSupabaseFormUrl] = useState(supabaseUrl);
+  const [supabaseFormAnonKey, setSupabaseFormAnonKey] = useState(supabaseAnonKey);
+  const [supabaseFormTableName, setSupabaseFormTableName] = useState(supabaseTableName);
+  const [supabaseFormRowId, setSupabaseFormRowId] = useState(supabaseRowId);
+  const safeSupabaseTableName = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(supabaseTableName) ? supabaseTableName : 'buddy_erp_backoffice';
+  const sqlCode = `create table if not exists public.${safeSupabaseTableName} (
   id text primary key,
   data jsonb not null,
-  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+  updated_at timestamptz not null default timezone('utc'::text, now())
 );
 
--- ปิดใช้งาน RLS เพื่อให้สิทธิ์ Anon Key สามารถเขียน-อ่านได้ง่าย
-alter table campchair_backoffice disable row level security;`;
+create index if not exists ${safeSupabaseTableName}_updated_at_idx
+  on public.${safeSupabaseTableName} (updated_at desc);
+
+create index if not exists ${safeSupabaseTableName}_data_gin_idx
+  on public.${safeSupabaseTableName} using gin (data);
+
+alter table public.${safeSupabaseTableName} disable row level security;`;
+
+  useEffect(() => {
+    setSupabaseFormUrl(supabaseUrl);
+  }, [supabaseUrl]);
+
+  useEffect(() => {
+    setSupabaseFormAnonKey(supabaseAnonKey);
+  }, [supabaseAnonKey]);
+
+  useEffect(() => {
+    setSupabaseFormTableName(supabaseTableName);
+  }, [supabaseTableName]);
+
+  useEffect(() => {
+    setSupabaseFormRowId(supabaseRowId);
+  }, [supabaseRowId]);
 
   const handleCopySql = () => {
     navigator.clipboard.writeText(sqlCode);
@@ -176,12 +181,48 @@ alter table campchair_backoffice disable row level security;`;
     setTimeout(() => setCopiedSql(false), 2000);
   };
 
+  const handleSaveSupabaseSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    const nextTableName = supabaseFormTableName.trim() || 'buddy_erp_backoffice';
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(nextTableName)) {
+      alert('ชื่อตาราง Supabase ใช้ได้เฉพาะ a-z, A-Z, 0-9 และ _ และต้องไม่ขึ้นต้นด้วยตัวเลข');
+      return;
+    }
+    setSupabaseUrl(supabaseFormUrl.trim());
+    setSupabaseAnonKey(supabaseFormAnonKey.trim());
+    setSupabaseTableName(nextTableName);
+    setSupabaseRowId(supabaseFormRowId.trim() || 'default');
+    alert('บันทึกค่า Supabase แล้ว ระบบจะทดสอบการเชื่อมต่อใหม่อัตโนมัติ');
+  };
+
+  const handlePushSupabase = async () => {
+    const res = await pushToSupabase(db);
+    if (res.success) {
+      alert('อัปโหลดข้อมูลขึ้น Supabase สำเร็จ');
+    } else {
+      alert(`อัปโหลดไม่สำเร็จ: ${res.error}`);
+    }
+  };
+
+  const handlePullSupabase = async () => {
+    if (!window.confirm('ต้องการดึงข้อมูลจาก Supabase มาแทนข้อมูลในเครื่องนี้หรือไม่?')) {
+      return;
+    }
+    const res = await pullFromSupabase();
+    if (res.success) {
+      alert('ดึงข้อมูลจาก Supabase สำเร็จ');
+      setActiveTab('dashboard');
+    } else {
+      alert(`ดึงข้อมูลไม่สำเร็จ: ${res.error}`);
+    }
+  };
+
   // Export JSON file download
   const handleDownloadBackup = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `campchair_erp_backup_${new Date().toISOString().split('T')[0]}.json`);
+    downloadAnchor.setAttribute("download", `buddy_erp_backup_${new Date().toISOString().split('T')[0]}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
@@ -222,9 +263,9 @@ alter table campchair_backoffice disable row level security;`;
   };
 
   const handleResetToDefaults = () => {
-    if (window.confirm('⚠️ คำเตือน! การล้างข้อมูลจะทำการล้างประวัติการทำออเดอร์และการรับสินค้าทั้งหมด ทั้งนี้ระบบจะป้อนข้อมูลตัวอย่างเปิดบู๊ธขึ้นมาใหม่เพื่อให้สำรวจได้ง่าย ยืนยันที่จะล้างข้อมูลหรือไม่?')) {
+    if (window.confirm('⚠️ คำเตือน! การดำเนินการนี้จะล้างข้อมูลในเครื่องนี้ทั้งหมด และตั้งฐานข้อมูลกลับเป็นฐานว่าง ยืนยันที่จะล้างข้อมูลหรือไม่?')) {
       resetDatabase();
-      alert('คืนค่าเริ่มต้นฐานข้อมูลเรียนร้อย บู๊ธตัวอย่างโหลดเข้าระบบเรียบร้อยแล้ว!');
+      alert('ล้างข้อมูลในเครื่องเรียบร้อยแล้ว ฐานข้อมูลปัจจุบันว่างเปล่า');
       setActiveTab('dashboard');
     }
   };
@@ -362,6 +403,148 @@ alter table campchair_backoffice disable row level security;`;
                     กู้คืนข้อมูลจากโค้ด
                   </button>
                 </form>
+              </div>
+
+              {/* Supabase Sync Panel */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-5 md:col-span-2">
+                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 border-b border-slate-50 pb-3">
+                  <div>
+                    <h3 className="font-bold text-slate-700 text-sm flex items-center gap-1.5">
+                      <Database className="w-4.5 h-4.5 text-emerald-700" />
+                      เชื่อมต่อ Supabase Cloud Sync
+                    </h3>
+                    <p className="text-slate-500 text-xs mt-1">
+                      ใช้ตาราง {safeSupabaseTableName} เพื่อสำรองและซิงค์ข้อมูลร้านระหว่างอุปกรณ์
+                    </p>
+                  </div>
+                  <div className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold border self-start ${
+                    supabaseStatus === 'connected'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : supabaseStatus === 'connecting'
+                        ? 'bg-amber-50 text-amber-700 border-amber-200'
+                        : supabaseStatus === 'error'
+                          ? 'bg-rose-50 text-rose-700 border-rose-200'
+                          : 'bg-slate-50 text-slate-500 border-slate-200'
+                  }`}>
+                    {supabaseStatus === 'connected'
+                      ? 'เชื่อมต่อแล้ว'
+                      : supabaseStatus === 'connecting'
+                        ? 'กำลังเชื่อมต่อ'
+                        : supabaseStatus === 'error'
+                          ? 'เชื่อมต่อขัดข้อง'
+                          : 'ยังไม่เชื่อมต่อ'}
+                  </div>
+                </div>
+
+                {supabaseErrorMsg && (
+                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                    {supabaseErrorMsg}
+                  </div>
+                )}
+
+                <form onSubmit={handleSaveSupabaseSettings} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase">Supabase Project URL</label>
+                    <input
+                      type="url"
+                      value={supabaseFormUrl}
+                      onChange={(e) => setSupabaseFormUrl(e.target.value)}
+                      placeholder="https://your-project.supabase.co"
+                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase">Anon Public API Key</label>
+                    <input
+                      type="password"
+                      value={supabaseFormAnonKey}
+                      onChange={(e) => setSupabaseFormAnonKey(e.target.value)}
+                      placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
+                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase">Supabase Table Name</label>
+                    <input
+                      type="text"
+                      value={supabaseFormTableName}
+                      onChange={(e) => setSupabaseFormTableName(e.target.value)}
+                      placeholder="buddy_erp_backoffice"
+                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase">Sync Row ID</label>
+                    <input
+                      type="text"
+                      value={supabaseFormRowId}
+                      onChange={(e) => setSupabaseFormRowId(e.target.value)}
+                      placeholder="default"
+                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+
+                  <div className="flex items-end justify-between gap-3">
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer pb-2.5">
+                      <input
+                        type="checkbox"
+                        checked={supabaseAutoSync}
+                        onChange={(e) => setSupabaseAutoSync(e.target.checked)}
+                        className="w-4 h-4 accent-emerald-700"
+                      />
+                      Auto sync เมื่อข้อมูลเปลี่ยน
+                    </label>
+                    <button
+                      type="submit"
+                      className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Check className="w-4 h-4" />
+                      บันทึกค่า
+                    </button>
+                  </div>
+                </form>
+
+                <div className="flex flex-col lg:flex-row gap-3 justify-between border-t border-slate-100 pt-4">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button
+                      type="button"
+                      onClick={handlePushSupabase}
+                      disabled={supabaseStatus !== 'connected' || supabaseIsPushing}
+                      className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      {supabaseIsPushing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />}
+                      อัปโหลดข้อมูลขึ้น Supabase
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePullSupabase}
+                      disabled={supabaseStatus !== 'connected' || supabaseIsPulling}
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      {supabaseIsPulling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CloudDownload className="w-4 h-4" />}
+                      ดึงข้อมูลจาก Supabase
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                    {supabaseLastSynced && (
+                      <span className="text-[10px] text-slate-400 sm:order-first">
+                        ซิงค์ล่าสุด: {supabaseLastSynced}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleCopySql}
+                      className="bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      {copiedSql ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                      {copiedSql ? 'คัดลอก SQL แล้ว' : 'คัดลอก SQL สร้างตาราง'}
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Advanced Administration Reset Panel */}

@@ -2,16 +2,22 @@ import { useState, useEffect } from 'react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { AppDatabase } from '../types';
 
-const URL_LS_KEY = 'campchair_supabase_url';
-const KEY_LS_KEY = 'campchair_supabase_anon_key';
-const AUTO_SYNC_LS_KEY = 'campchair_supabase_auto_sync';
-const ROW_ID_LS_KEY = 'campchair_supabase_row_id';
+const URL_LS_KEY = 'buddy_erp_supabase_url';
+const KEY_LS_KEY = 'buddy_erp_supabase_anon_key';
+const AUTO_SYNC_LS_KEY = 'buddy_erp_supabase_auto_sync';
+const ROW_ID_LS_KEY = 'buddy_erp_supabase_row_id';
+const TABLE_LS_KEY = 'buddy_erp_supabase_table';
+const DEFAULT_TABLE = 'buddy_erp_backoffice';
 
 export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
-  const [url, setUrl] = useState(() => localStorage.getItem(URL_LS_KEY) || (import.meta.env.VITE_SUPABASE_URL || ''));
-  const [anonKey, setAnonKey] = useState(() => localStorage.getItem(KEY_LS_KEY) || (import.meta.env.VITE_SUPABASE_ANON_KEY || ''));
+  const [url, setUrl] = useState(() => import.meta.env.VITE_SUPABASE_URL || localStorage.getItem(URL_LS_KEY) || '');
+  const [anonKey, setAnonKey] = useState(() => import.meta.env.VITE_SUPABASE_ANON_KEY || localStorage.getItem(KEY_LS_KEY) || '');
+  const [tableName, setTableName] = useState(() => import.meta.env.VITE_SUPABASE_TABLE || localStorage.getItem(TABLE_LS_KEY) || DEFAULT_TABLE);
   const [rowId, setRowId] = useState(() => localStorage.getItem(ROW_ID_LS_KEY) || 'default');
-  const [autoSync, setAutoSync] = useState(true);
+  const [autoSync, setAutoSync] = useState(() => {
+    const stored = localStorage.getItem(AUTO_SYNC_LS_KEY);
+    return stored === null ? true : stored === 'true';
+  });
   const [client, setClient] = useState<SupabaseClient | null>(null);
   const [status, setStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
   const [errorMsg, setErrorMsg] = useState('');
@@ -27,6 +33,10 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
   useEffect(() => {
     localStorage.setItem(KEY_LS_KEY, anonKey);
   }, [anonKey]);
+
+  useEffect(() => {
+    localStorage.setItem(TABLE_LS_KEY, tableName);
+  }, [tableName]);
 
   useEffect(() => {
     localStorage.setItem(ROW_ID_LS_KEY, rowId);
@@ -50,14 +60,14 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
         const testConnection = async () => {
           try {
             const { error } = await supabase
-              .from('campchair_backoffice')
+              .from(tableName)
               .select('id')
               .limit(1);
 
             if (error) {
               if (error.code === '42P01') {
                 setStatus('connected'); // Connected to supabase, but table needs creation
-                setErrorMsg('ตาราง "campchair_backoffice" ยังไม่ถูกสร้างใน Supabase ของคุณ กรุณารันคำสั่ง SQL เพื่อสร้างตาราง');
+                setErrorMsg(`ตาราง "${tableName}" ยังไม่ถูกสร้างใน Supabase ของคุณ กรุณารันคำสั่ง SQL เพื่อสร้างตาราง`);
               } else {
                 setStatus('error');
                 setErrorMsg(`เชื่อมต่อล้มเหลว: ${error.message}`);
@@ -82,7 +92,7 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
       setStatus('disconnected');
       setErrorMsg('');
     }
-  }, [url, anonKey]);
+  }, [url, anonKey, tableName]);
 
   // Push to Supabase
   const pushToSupabase = async (currentDb: AppDatabase = db): Promise<{ success: boolean; error?: string }> => {
@@ -92,7 +102,7 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
     setIsPushing(true);
     try {
       const { error } = await client
-        .from('campchair_backoffice')
+        .from(tableName)
         .upsert({
           id: rowId,
           data: currentDb,
@@ -102,7 +112,7 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
       setIsPushing(false);
       if (error) {
         if (error.code === '42P01') {
-          return { success: false, error: 'ไม่พบตาราง "campchair_backoffice" ใน Supabase กรุณารัน SQL เพื่อสร้างตารางก่อน' };
+          return { success: false, error: `ไม่พบตาราง "${tableName}" ใน Supabase กรุณารัน SQL เพื่อสร้างตารางก่อน` };
         }
         return { success: false, error: error.message };
       }
@@ -122,7 +132,7 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
     setIsPulling(true);
     try {
       const { data, error } = await client
-        .from('campchair_backoffice')
+        .from(tableName)
         .select('data, updated_at')
         .eq('id', rowId)
         .maybeSingle();
@@ -130,7 +140,7 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
       setIsPulling(false);
       if (error) {
         if (error.code === '42P01') {
-          return { success: false, error: 'ไม่พบตาราง "campchair_backoffice" ใน Supabase กรุณารัน SQL เพื่อสร้างตารางก่อน' };
+          return { success: false, error: `ไม่พบตาราง "${tableName}" ใน Supabase กรุณารัน SQL เพื่อสร้างตารางก่อน` };
         }
         return { success: false, error: error.message };
       }
@@ -182,6 +192,8 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
     setUrl,
     anonKey,
     setAnonKey,
+    tableName,
+    setTableName,
     rowId,
     setRowId,
     autoSync,
