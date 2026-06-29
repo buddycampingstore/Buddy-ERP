@@ -82,6 +82,8 @@ export default function App() {
     lastSynced: supabaseLastSynced,
     isPushing: supabaseIsPushing,
     isPulling: supabaseIsPulling,
+    isTableReady: supabaseIsTableReady,
+    hasBootstrapped: supabaseHasBootstrapped,
     pushToSupabase,
     pullFromSupabase,
     client: supabaseClient
@@ -388,10 +390,16 @@ alter table campchair_backoffice disable row level security;`;
                         กำลังเชื่อมต่อ...
                       </span>
                     )}
-                    {supabaseStatus === 'connected' && (
+                    {supabaseStatus === 'connected' && supabaseIsTableReady && (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                        เชื่อมต่อสำเร็จ
+                        พร้อมเก็บข้อมูล
+                      </span>
+                    )}
+                    {supabaseStatus === 'connected' && !supabaseIsTableReady && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        ต้องสร้างตาราง
                       </span>
                     )}
                     {supabaseStatus === 'error' && (
@@ -447,12 +455,31 @@ alter table campchair_backoffice disable row level security;`;
                       </div>
 
                       <div className="flex flex-col justify-end">
-                        <div className="flex items-center gap-1.5 text-xs text-emerald-700 select-none pb-2.5 font-bold">
-                          <CloudUpload className="w-4 h-4 text-emerald-600 animate-pulse" />
-                          <span>ระบบเปิดซิงค์คลาวด์ตลอดเวลา</span>
-                        </div>
+                        <label className="flex items-center gap-2 text-xs text-slate-600 select-none pb-2.5 font-bold cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={supabaseAutoSync}
+                            onChange={(e) => setSupabaseAutoSync(e.target.checked)}
+                            className="h-4 w-4 accent-emerald-700 cursor-pointer"
+                          />
+                          <span>{supabaseAutoSync ? 'ซิงค์อัตโนมัติเปิดอยู่' : 'ซิงค์อัตโนมัติปิดอยู่'}</span>
+                        </label>
                       </div>
                     </div>
+
+                    {supabaseStatus === 'connected' && (
+                      <div className={`text-[10px] rounded-xl border p-2.5 leading-relaxed ${
+                        supabaseIsTableReady
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-100'
+                          : 'bg-amber-50 text-amber-800 border-amber-200'
+                      }`}>
+                        {supabaseIsTableReady
+                          ? (supabaseHasBootstrapped
+                              ? 'เชื่อมต่อพร้อมใช้งานแล้ว ข้อมูลจะถูกเก็บใน Supabase อัตโนมัติเมื่อมีการเปลี่ยนแปลง'
+                              : 'ตารางพร้อมแล้ว ระบบกำลังเตรียมซิงค์ข้อมูลเริ่มต้นกับ Supabase')
+                          : 'เชื่อมต่อโปรเจกต์ได้แล้ว แต่ยังไม่พบตารางเก็บข้อมูล กรุณารัน SQL ด้านขวาก่อน แล้วกดอัปโหลดขึ้นคลาวด์'}
+                      </div>
+                    )}
 
                     {supabaseStatus === 'connected' && (
                       <div className="pt-2 flex flex-wrap gap-2.5">
@@ -525,7 +552,7 @@ alter table campchair_backoffice disable row level security;`;
                         </button>
                       </div>
                       <p className="text-slate-500 text-[11px] leading-relaxed">
-                        ในการใช้งานครั้งแรก กรุณานำคำสั่ง SQL ด้านล่างนี้ไปรันในช่อง <strong>SQL Editor</strong> บนหน้าแผงควบคุม <strong>Supabase Dashboard</strong> ของคุณ เพื่อจัดเตรียมตารางให้พร้อมเก็บข้อมูลหลักทั้งหมด:
+                        ใช้งานครั้งแรกให้นำ SQL นี้ไปรันใน <strong>SQL Editor</strong> ของ <strong>Supabase Dashboard</strong> ก่อน จากนั้นกลับมากด <strong>อัปโหลดขึ้นคลาวด์</strong> ระบบจะสร้างแถวข้อมูลของร้านตาม Row ID ให้ทันที:
                       </p>
                     </div>
 
@@ -536,7 +563,7 @@ alter table campchair_backoffice disable row level security;`;
                     </div>
 
                     <div className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-100 p-2.5 rounded-xl">
-                      💡 <strong>เทคนิค:</strong> ระบบรองรับ Multi-user และซิงค์ข้ามเครื่องได้! เมื่อเครื่องอื่นๆ ตั้งค่า URL, Key, และ Row ID เดียวกัน และเปิด "ซิงค์อัตโนมัติ" ข้อมูลสต็อกและการทำออเดอร์จะซิงค์หากันแบบสมบูรณ์
+                      <strong>สถานะการเก็บข้อมูล:</strong> แอปจะเก็บข้อมูลลงเครื่องก่อนเสมอ และจะส่งขึ้น Supabase เมื่อสถานะเป็น “พร้อมเก็บข้อมูล” หรือเมื่อกด “อัปโหลดขึ้นคลาวด์”
                     </div>
                   </div>
                 </div>
@@ -662,17 +689,29 @@ alter table campchair_backoffice disable row level security;`;
           
           {/* Supabase Status Pill */}
           <div className="mt-3.5">
-            {supabaseStatus === 'connected' ? (
+            {supabaseStatus === 'connected' && supabaseIsTableReady ? (
               <button
                 onClick={() => setActiveTab('backup')}
                 className="w-full flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-all text-left cursor-pointer"
-                title="เชื่อมต่อฐานข้อมูลคลาวด์แล้ว คลิกเพื่อดูข้อมูลสำรอง"
+                title="พร้อมเก็บข้อมูลบน Supabase แล้ว คลิกเพื่อดูข้อมูลสำรอง"
               >
                 <span className="flex items-center gap-1.5 min-w-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                   <span className="truncate">Supabase ซิงค์ออนไลน์</span>
                 </span>
                 <Database className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              </button>
+            ) : supabaseStatus === 'connected' && !supabaseIsTableReady ? (
+              <button
+                onClick={() => setActiveTab('backup')}
+                className="w-full flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 transition-all text-left cursor-pointer"
+                title="เชื่อมต่อ Supabase ได้แล้ว แต่ต้องสร้างตารางก่อนเก็บข้อมูล"
+              >
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                  <span className="truncate">Supabase รอตาราง</span>
+                </span>
+                <Database className="w-3.5 h-3.5 text-amber-600 shrink-0" />
               </button>
             ) : supabaseStatus === 'connecting' ? (
               <button
@@ -775,10 +814,15 @@ alter table campchair_backoffice disable row level security;`;
             className="flex items-center justify-center cursor-pointer transition-transform active:scale-95"
             title="ตั้งค่า/ดูสถานะซิงค์ข้อมูล Supabase"
           >
-            {supabaseStatus === 'connected' ? (
+            {supabaseStatus === 'connected' && supabaseIsTableReady ? (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
                 <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
                 ซิงค์แล้ว
+              </span>
+            ) : supabaseStatus === 'connected' && !supabaseIsTableReady ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200">
+                <span className="w-1 h-1 rounded-full bg-amber-500" />
+                รอตาราง
               </span>
             ) : supabaseStatus === 'connecting' ? (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200">
