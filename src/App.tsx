@@ -37,6 +37,8 @@ import {
 } from 'lucide-react';
 
 type TabType = 'dashboard' | 'products' | 'purchase' | 'orders' | 'deliveries' | 'reports' | 'backup';
+const AUTH_SESSION_KEY = 'buddy_erp_is_authenticated';
+const AUTH_SCOPE_KEY = 'buddy_erp_auth_scope';
 
 export default function App() {
   const {
@@ -83,6 +85,7 @@ export default function App() {
     pullFromSupabase,
     client: supabaseClient
   } = useSupabase(db, setDb);
+  const authScope = `${supabaseUrl}|${supabaseTableName}`;
 
   // Listen to Supabase Auth state changes
   useEffect(() => {
@@ -92,7 +95,8 @@ export default function App() {
     supabaseClient.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setIsAuthenticated(true);
-        sessionStorage.setItem('buddy_erp_is_authenticated', 'true');
+        sessionStorage.setItem(AUTH_SESSION_KEY, 'true');
+        sessionStorage.setItem(AUTH_SCOPE_KEY, authScope);
       }
     });
 
@@ -100,11 +104,13 @@ export default function App() {
     const { data: { subscription } } = supabaseClient.auth.onAuthStateChange((event, session) => {
       if (session) {
         setIsAuthenticated(true);
-        sessionStorage.setItem('buddy_erp_is_authenticated', 'true');
+        sessionStorage.setItem(AUTH_SESSION_KEY, 'true');
+        sessionStorage.setItem(AUTH_SCOPE_KEY, authScope);
       } else {
         if (event === 'SIGNED_OUT') {
           setIsAuthenticated(false);
-          sessionStorage.removeItem('buddy_erp_is_authenticated');
+          sessionStorage.removeItem(AUTH_SESSION_KEY);
+          sessionStorage.removeItem(AUTH_SCOPE_KEY);
         }
       }
     });
@@ -112,15 +118,29 @@ export default function App() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [supabaseClient]);
+  }, [supabaseClient, authScope]);
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // --- AUTHENTICATION STATE ---
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return sessionStorage.getItem('buddy_erp_is_authenticated') === 'true';
+    return sessionStorage.getItem(AUTH_SESSION_KEY) === 'true' && sessionStorage.getItem(AUTH_SCOPE_KEY) === authScope;
   });
+
+  useEffect(() => {
+    if (sessionStorage.getItem(AUTH_SCOPE_KEY) !== authScope) {
+      sessionStorage.removeItem(AUTH_SESSION_KEY);
+      sessionStorage.removeItem(AUTH_SCOPE_KEY);
+      setIsAuthenticated(false);
+    }
+  }, [authScope]);
+
+  const markAuthenticated = () => {
+    sessionStorage.setItem(AUTH_SESSION_KEY, 'true');
+    sessionStorage.setItem(AUTH_SCOPE_KEY, authScope);
+    setIsAuthenticated(true);
+  };
 
   const handleLogout = async () => {
     if (window.confirm('คุณแน่ใจหรือไม่ว่าต้องการออกจากระบบเพื่อความปลอดภัย?')) {
@@ -131,7 +151,8 @@ export default function App() {
           console.error(e);
         }
       }
-      sessionStorage.removeItem('buddy_erp_is_authenticated');
+      sessionStorage.removeItem(AUTH_SESSION_KEY);
+      sessionStorage.removeItem(AUTH_SCOPE_KEY);
       setIsAuthenticated(false);
       setMobileMenuOpen(false);
     }
@@ -585,7 +606,9 @@ alter table public.${safeSupabaseTableName} disable row level security;`;
         setUrl={setSupabaseUrl}
         anonKey={supabaseAnonKey}
         setAnonKey={setSupabaseAnonKey}
-        onLoginSuccess={() => setIsAuthenticated(true)} 
+        tableName={supabaseTableName}
+        setTableName={setSupabaseTableName}
+        onLoginSuccess={markAuthenticated}
       />
     );
   }

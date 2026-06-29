@@ -28,6 +28,8 @@ interface LoginViewProps {
   setUrl: (url: string) => void;
   anonKey: string;
   setAnonKey: (key: string) => void;
+  tableName: string;
+  setTableName: (tableName: string) => void;
   onLoginSuccess: () => void;
 }
 
@@ -39,6 +41,8 @@ export function LoginView({
   setUrl, 
   anonKey, 
   setAnonKey, 
+  tableName,
+  setTableName,
   onLoginSuccess 
 }: LoginViewProps) {
   // Supabase Auth form states
@@ -53,6 +57,14 @@ export function LoginView({
   const [showConnectionConfig, setShowConnectionConfig] = useState(false);
   const [inputUrl, setInputUrl] = useState(url);
   const [inputAnonKey, setInputAnonKey] = useState(anonKey);
+  const [inputTableName, setInputTableName] = useState(tableName);
+  const activeProjectHost = (() => {
+    try {
+      return url ? new URL(url).host : '';
+    } catch {
+      return '';
+    }
+  })();
 
   // Update input values when prop values change
   useEffect(() => {
@@ -62,6 +74,10 @@ export function LoginView({
   useEffect(() => {
     setInputAnonKey(anonKey);
   }, [anonKey]);
+
+  useEffect(() => {
+    setInputTableName(tableName);
+  }, [tableName]);
 
   // Submit handler for Supabase Auth
   const handleSupabaseSubmit = async (e: React.FormEvent) => {
@@ -100,7 +116,6 @@ export function LoginView({
             type: 'success',
             text: 'สมัครสมาชิกและเข้าสู่ระบบสำเร็จ!'
           });
-          sessionStorage.setItem('buddy_erp_is_authenticated', 'true');
           setTimeout(() => onLoginSuccess(), 1000);
         } else {
           setSupabaseMessage({
@@ -119,7 +134,6 @@ export function LoginView({
           throw error;
         }
 
-        sessionStorage.setItem('buddy_erp_is_authenticated', 'true');
         onLoginSuccess();
       }
     } catch (err: any) {
@@ -135,8 +149,17 @@ export function LoginView({
   // Save Connection Config
   const handleSaveConnection = (e: React.FormEvent) => {
     e.preventDefault();
+    const nextTableName = inputTableName.trim() || 'buddy_erp_backoffice';
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(nextTableName)) {
+      setSupabaseMessage({
+        type: 'error',
+        text: 'ชื่อตาราง Supabase ใช้ได้เฉพาะ a-z, A-Z, 0-9 และ _ และต้องไม่ขึ้นต้นด้วยตัวเลข'
+      });
+      return;
+    }
     setUrl(inputUrl.trim());
     setAnonKey(inputAnonKey.trim());
+    setTableName(nextTableName);
     setSupabaseMessage(null);
     alert('บันทึกค่าเชื่อมต่อเรียบร้อย กำลังทดสอบเชื่อมต่อใหม่...');
   };
@@ -303,10 +326,24 @@ export function LoginView({
 
           {/* Bottom utility: configuration status */}
           <div className="pt-3 border-t border-slate-900/80 flex items-center justify-between text-[11px] text-slate-400">
-            <span className="flex items-center gap-1">
-              <span className={`w-1.5 h-1.5 rounded-full ${status === 'connected' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
-              สถานะ: {status === 'connected' ? 'พร้อมซิงค์ออนไลน์' : 'เซิร์ฟเวอร์ไม่ได้เชื่อมต่อ'}
-            </span>
+            <div className="min-w-0">
+              <span className="flex items-center gap-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${status === 'connected' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+                สถานะ: {status === 'connected' ? 'พร้อมซิงค์ออนไลน์' : 'เซิร์ฟเวอร์ไม่ได้เชื่อมต่อ'}
+              </span>
+              {activeProjectHost && (
+                <span className="block max-w-[220px] truncate font-mono text-[10px] mt-1" title={url}>
+                  {activeProjectHost}
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowConnectionConfig((current) => !current)}
+              className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 underline cursor-pointer"
+            >
+              เปลี่ยน API
+            </button>
           </div>
         </motion.div>
 
@@ -350,6 +387,20 @@ export function LoginView({
                     placeholder="เช่น eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                     value={inputAnonKey}
                     onChange={(e) => setInputAnonKey(e.target.value)}
+                    className="w-full text-[11px] p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-300 placeholder-slate-600 outline-none focus:border-emerald-600 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                    Supabase Table Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="buddy_erp_backoffice"
+                    value={inputTableName}
+                    onChange={(e) => setInputTableName(e.target.value)}
                     className="w-full text-[11px] p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-300 placeholder-slate-600 outline-none focus:border-emerald-600 font-mono"
                   />
                 </div>

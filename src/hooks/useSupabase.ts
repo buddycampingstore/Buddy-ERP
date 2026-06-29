@@ -8,9 +8,23 @@ const AUTO_SYNC_LS_KEY = 'buddy_erp_supabase_auto_sync';
 const ROW_ID_LS_KEY = 'buddy_erp_supabase_row_id';
 const TABLE_LS_KEY = 'buddy_erp_supabase_table';
 const DEFAULT_TABLE = 'buddy_erp_backoffice';
+const LEGACY_LS_KEYS = [
+  'campchair_supabase_url',
+  'campchair_supabase_anon_key',
+  'campchair_supabase_auto_sync',
+  'campchair_supabase_row_id',
+  'campchair_supabase_table'
+];
+
+function clearLegacySupabaseConfig() {
+  LEGACY_LS_KEYS.forEach((key) => localStorage.removeItem(key));
+}
 
 export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
-  const [url, setUrl] = useState(() => import.meta.env.VITE_SUPABASE_URL || localStorage.getItem(URL_LS_KEY) || '');
+  const [url, setUrl] = useState(() => {
+    clearLegacySupabaseConfig();
+    return import.meta.env.VITE_SUPABASE_URL || localStorage.getItem(URL_LS_KEY) || '';
+  });
   const [anonKey, setAnonKey] = useState(() => import.meta.env.VITE_SUPABASE_ANON_KEY || localStorage.getItem(KEY_LS_KEY) || '');
   const [tableName, setTableName] = useState(() => import.meta.env.VITE_SUPABASE_TABLE || localStorage.getItem(TABLE_LS_KEY) || DEFAULT_TABLE);
   const [rowId, setRowId] = useState(() => localStorage.getItem(ROW_ID_LS_KEY) || 'default');
@@ -24,6 +38,10 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
   const [lastSynced, setLastSynced] = useState<string>('');
   const [isPushing, setIsPushing] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
+
+  useEffect(() => {
+    clearLegacySupabaseConfig();
+  }, []);
 
   // Save config to LS
   useEffect(() => {
