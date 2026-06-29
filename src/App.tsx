@@ -169,8 +169,34 @@ export default function App() {
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- ปิดใช้งาน RLS เพื่อให้สิทธิ์ Anon Key สามารถเขียน-อ่านได้ง่าย
-alter table campchair_backoffice disable row level security;`;
+-- เปิด RLS สำหรับใช้งานจริงบน Vercel: anon key เป็น public แต่ต้อง login ก่อนอ่าน/เขียน
+alter table campchair_backoffice enable row level security;
+
+drop policy if exists "campchair_authenticated_select" on campchair_backoffice;
+drop policy if exists "campchair_authenticated_insert" on campchair_backoffice;
+drop policy if exists "campchair_authenticated_update" on campchair_backoffice;
+drop policy if exists "campchair_authenticated_delete" on campchair_backoffice;
+
+create policy "campchair_authenticated_select"
+on campchair_backoffice for select
+to authenticated
+using (true);
+
+create policy "campchair_authenticated_insert"
+on campchair_backoffice for insert
+to authenticated
+with check (true);
+
+create policy "campchair_authenticated_update"
+on campchair_backoffice for update
+to authenticated
+using (true)
+with check (true);
+
+create policy "campchair_authenticated_delete"
+on campchair_backoffice for delete
+to authenticated
+using (true);`;
 
   const handleCopySql = () => {
     navigator.clipboard.writeText(sqlCode);

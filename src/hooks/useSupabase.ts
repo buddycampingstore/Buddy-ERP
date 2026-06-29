@@ -37,6 +37,7 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
   const [isPulling, setIsPulling] = useState(false);
   const [isTableReady, setIsTableReady] = useState(false);
   const [hasBootstrapped, setHasBootstrapped] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // Save config to LS
   useEffect(() => {
@@ -60,45 +61,21 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
   useEffect(() => {
     setHasBootstrapped(false);
     setIsTableReady(false);
+    setIsAuthenticated(false);
 
     if (url.trim() && anonKey.trim()) {
       try {
         setStatus('connecting');
         const supabase = createClient(url.trim(), anonKey.trim(), {
-          auth: { persistSession: false }
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true
+          }
         });
         setClient(supabase);
-        
-        // Test connection
-        const testConnection = async () => {
-          try {
-            const { error } = await supabase
-              .from('campchair_backoffice')
-              .select('id')
-              .limit(1);
-
-            if (error) {
-              if (error.code === '42P01') {
-                setStatus('connected'); // Connected to supabase, but table needs creation
-                setIsTableReady(false);
-                setErrorMsg(TABLE_MISSING_MESSAGE);
-              } else {
-                setStatus('error');
-                setIsTableReady(false);
-                setErrorMsg(`เชื่อมต่อล้มเหลว: ${error.message}`);
-              }
-            } else {
-              setStatus('connected');
-              setIsTableReady(true);
-              setErrorMsg('');
-            }
-          } catch (err: any) {
-            setStatus('error');
-            setIsTableReady(false);
-            setErrorMsg(err?.message || 'ไม่สามารถเชื่อมต่อได้ (กรุณาเช็คอินเทอร์เน็ตหรือความถูกต้องของ URL)');
-          }
-        };
-        testConnection();
+        setStatus('connected');
+        setErrorMsg('');
       } catch (err: any) {
         setClient(null);
         setStatus('error');
@@ -113,10 +90,41 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
     }
   }, [url, anonKey]);
 
+  useEffect(() => {
+    if (!client) {
+      setIsAuthenticated(false);
+      return;
+    }
+
+    let mounted = true;
+
+    client.auth.getSession().then(({ data: { session } }) => {
+      if (mounted) {
+        setIsAuthenticated(Boolean(session));
+      }
+    });
+
+    const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(Boolean(session));
+      if (!session) {
+        setHasBootstrapped(false);
+        setIsTableReady(false);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [client]);
+
   // Push to Supabase
   const pushToSupabase = async (currentDb: AppDatabase = db): Promise<{ success: boolean; error?: string }> => {
     if (!client) {
       return { success: false, error: 'ไม่ได้กำหนดค่าการเชื่อมต่อ Supabase' };
+    }
+    if (!isAuthenticated) {
+      return { success: false, error: 'กรุณาเข้าสู่ระบบด้วย Supabase Auth ก่อนอัปโหลดข้อมูล' };
     }
     setIsPushing(true);
     try {
@@ -155,6 +163,9 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
   const pullFromSupabase = async (): Promise<{ success: boolean; data?: AppDatabase; error?: string }> => {
     if (!client) {
       return { success: false, error: 'ไม่ได้กำหนดค่าการเชื่อมต่อ Supabase' };
+    }
+    if (!isAuthenticated) {
+      return { success: false, error: 'กรุณาเข้าสู่ระบบด้วย Supabase Auth ก่อนดาวน์โหลดข้อมูล' };
     }
     setIsPulling(true);
     try {
@@ -207,7 +218,7 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
   // On first successful connection, pull existing cloud data.
   // If this Row ID has no cloud data yet, create it from the current local database.
   useEffect(() => {
-    if (!autoSync || status !== 'connected' || !client || !isTableReady || hasBootstrapped) return;
+    if (!autoSync || status !== 'connected' || !client || !isAuthenticated || hasBootstrapped) return;
 
     let cancelled = false;
 
@@ -235,6 +246,7 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
         if (data?.data) {
           if (isValidDatabaseShape(data.data)) {
             setDb(data.data as AppDatabase);
+            setIsTableReady(true);
             setErrorMsg('');
             setLastSynced(new Date().toLocaleTimeString('th-TH'));
             setHasBootstrapped(true);
@@ -264,18 +276,18 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
     return () => {
       cancelled = true;
     };
-  }, [autoSync, status, client, isTableReady, hasBootstrapped, rowId]);
+  }, [autoSync, status, client, isAuthenticated, hasBootstrapped, rowId]);
 
   // Debounced Auto Sync on database changes
   useEffect(() => {
-    if (!autoSync || status !== 'connected' || !client || !isTableReady || !hasBootstrapped) return;
+    if (!autoSync || status !== 'connected' || !client || !isAuthenticated || !isTableReady || !hasBootstrapped) return;
 
     const timer = setTimeout(() => {
       pushToSupabase();
     }, 1000); // 1 second debounce
 
     return () => clearTimeout(timer);
-  }, [db, autoSync, status, client, isTableReady, hasBootstrapped, rowId]);
+  }, [db, autoSync, status, client, isAuthenticated, isTableReady, hasBootstrapped, rowId]);
 
   return {
     url,
@@ -293,6 +305,7 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
     isPulling,
     isTableReady,
     hasBootstrapped,
+    isAuthenticated,
     pushToSupabase,
     pullFromSupabase,
     client,
