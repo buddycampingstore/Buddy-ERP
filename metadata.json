@@ -1,0 +1,6 @@
+{
+  "name": "ระบบคลังสินค้าเก้าอี้แคมป์ปิ้ง",
+  "description": "ระบบหลังบ้านจัดการแบรนด์ รุ่น สีกระติกพับเก้าอี้แคมป์ปิ้ง คำนวณ WAC อัตโนมัติ จัดการออเดอร์ พัสดุ และรายงานกำไรขาดทุนด้วย localStorage",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

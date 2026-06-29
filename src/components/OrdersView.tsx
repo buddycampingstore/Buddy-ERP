@@ -1,0 +1,919 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState } from 'react';
+import { 
+  AppDatabase, 
+  Order, 
+  Customer, 
+  OrderChannel, 
+  OrderStatus, 
+  DeliveryType 
+} from '../types';
+import { 
+  Plus, 
+  Trash2, 
+  Percent,
+  Clock, 
+  CheckCircle, 
+  Truck, 
+  Check, 
+  UserPlus, 
+  TrendingUp, 
+  Search, 
+  Calendar, 
+  ShoppingBag, 
+  Users,
+  Image as ImageIcon
+} from 'lucide-react';
+
+interface OrdersViewProps {
+  db: AppDatabase;
+  createOrder: (orderData: {
+    customer_id: string;
+    date: string;
+    channel: OrderChannel;
+    status: OrderStatus;
+    delivery_type: DeliveryType;
+    discount: number;
+    items: { variant_id: string; qty: number; sale_price: number; discount: number }[];
+    shipping_fee?: number;
+    shipping_cost?: number;
+  }) => string;
+  updateOrderStatus: (orderId: string, status: OrderStatus) => void;
+  deleteOrder: (orderId: string) => void;
+}
+
+interface NewOrderItem {
+  variant_id: string;
+  qty: number;
+  sale_price: number;
+  discount: number;
+}
+
+export const OrdersView: React.FC<OrdersViewProps> = ({
+  db,
+  createOrder,
+  updateOrderStatus,
+  deleteOrder
+}) => {
+  const [isAdding, setIsAdding] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // --- IMAGE LIGHTBOX STATE ---
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewTitle, setPreviewTitle] = useState<string>('');
+
+  // --- NEW SALES ORDER FORM STATE ---
+  const [customerId, setCustomerId] = useState('general');
+  const [date, setDate] = useState(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+  const [channel, setChannel] = useState<OrderChannel>('fb');
+  const [status, setStatus] = useState<OrderStatus>('confirmed');
+  const [deliveryType, setDeliveryType] = useState<DeliveryType>('shipping');
+  const [globalDiscount, setGlobalDiscount] = useState<number>(0);
+  const [shippingFee, setShippingFee] = useState<number>(0);
+  const [shippingCost, setShippingCost] = useState<number>(0);
+  const [items, setItems] = useState<NewOrderItem[]>([
+    { variant_id: '', qty: 1, sale_price: 2200, discount: 0 }
+  ]);
+
+  // Set first variant as default on open
+  React.useEffect(() => {
+    if (isAdding && db.variants.length > 0 && !items[0].variant_id) {
+      const v0 = db.variants[0];
+      const defaultPrice = (v0 && v0.standard_sale_price !== undefined) ? v0.standard_sale_price : 2200;
+      setItems([{ variant_id: v0.id, qty: 1, sale_price: defaultPrice, discount: 0 }]);
+    }
+  }, [isAdding, db.variants, items]);
+
+  // --- FORM HANDLERS ---
+  const handleAddItemRow = () => {
+    const firstId = db.variants[0]?.id || '';
+    const v = db.variants.find(variant => variant.id === firstId);
+    const defaultPrice = (v && v.standard_sale_price !== undefined) ? v.standard_sale_price : 2200;
+    setItems([...items, { variant_id: firstId, qty: 1, sale_price: defaultPrice, discount: 0 }]);
+  };
+
+  const handleRemoveItemRow = (index: number) => {
+    if (items.length === 1) return;
+    setItems(items.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateItemRow = (index: number, field: keyof NewOrderItem, value: any) => {
+    setItems(prev => prev.map((item, i) => {
+      if (i === index) {
+        const updated = {
+          ...item,
+          [field]: value
+        };
+        // Auto-fill standard sale price when variant is selected
+        if (field === 'variant_id') {
+          const v = db.variants.find(variant => variant.id === value);
+          if (v && v.standard_sale_price !== undefined) {
+            updated.sale_price = v.standard_sale_price;
+          }
+        }
+        return updated;
+      }
+      return item;
+    }));
+  };
+
+  const handleSaveOrder = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (items.some(item => !item.variant_id)) {
+      alert('กรุณาเลือกโมเดลเก้าอี้และตัวเลือกสินค้าให้ครบทุกแถว');
+      return;
+    }
+
+    try {
+      createOrder({
+        customer_id: 'general',
+        date,
+        channel,
+        status,
+        delivery_type: deliveryType,
+        discount: globalDiscount,
+        items,
+        shipping_fee: deliveryType === 'shipping' ? shippingFee : 0,
+        shipping_cost: deliveryType === 'shipping' ? shippingCost : 0
+      });
+
+      alert('เปิดบันทึกปิดการขายสร้างออเดอร์เรียบร้อย!');
+      setIsAdding(false);
+      // Reset form defaults
+      setCustomerId('general');
+      setDate(new Date().toISOString().split('T')[0]);
+      setChannel('fb');
+      setStatus('confirmed');
+      setDeliveryType('shipping');
+      setGlobalDiscount(0);
+      setShippingFee(0);
+      setShippingCost(0);
+      const defaultVariant = db.variants[0];
+      const defaultPrice = (defaultVariant && defaultVariant.standard_sale_price !== undefined) ? defaultVariant.standard_sale_price : 2200;
+      setItems([{ variant_id: defaultVariant?.id || '', qty: 1, sale_price: defaultPrice, discount: 0 }]);
+    } catch (err: any) {
+      alert(`ไม่สามารถเปิดใบสั่งซื้อได้: ${err.message || err}`);
+    }
+  };
+
+  // --- REAL-TIME CALCULATIONS ---
+  const calculatedItems = items.map(item => {
+    const variant = db.variants.find(v => v.id === item.variant_id);
+    const wac = variant?.current_wac || 0;
+    const itemTotal = (item.sale_price - item.discount) * item.qty;
+    const costBasisTotal = wac * item.qty;
+    const profitTotal = itemTotal - costBasisTotal;
+
+    return {
+      ...item,
+      wac,
+      itemTotal,
+      profitTotal,
+      error: variant ? (db.stockItems.filter(s => s.variant_id === item.variant_id && s.status === 'in_stock').length < item.qty) : false
+    };
+  });
+
+  const totalSale_สด = calculatedItems.reduce((sum, item) => sum + item.itemTotal, 0) + (deliveryType === 'shipping' ? shippingFee : 0) - globalDiscount;
+  const totalCost_สด = calculatedItems.reduce((sum, item) => sum + (item.wac * item.qty), 0) + (deliveryType === 'shipping' ? shippingCost : 0);
+  const totalProfit_สด = totalSale_สด - totalCost_สด;
+
+  // --- FILTERED ORDERS LIST ---
+  const filteredOrders = db.orders.filter(order => {
+    // 1. Filter by status
+    if (statusFilter !== 'all' && order.status !== statusFilter) {
+      return false;
+    }
+
+    // 2. Filter by search query
+    if (searchQuery.trim() !== '') {
+      const searchLow = searchQuery.toLowerCase();
+      
+      const matchId = order.id.toLowerCase().includes(searchLow);
+      
+      const matchItems = order.items.some(oi => {
+        const v = db.variants.find(varItem => varItem.id === oi.variant_id);
+        const m = v ? db.models.find(mod => mod.id === v.model_id) : null;
+        return m?.name.toLowerCase().includes(searchLow) || v?.color.toLowerCase().includes(searchLow);
+      });
+
+      return matchId || matchItems;
+    }
+
+    return true;
+  });
+
+  const statusClassMap = {
+    'pending': 'bg-slate-100 text-slate-600 border border-slate-200',
+    'confirmed': 'bg-amber-50 text-amber-600 border border-amber-200',
+    'shipped': 'bg-blue-50 text-blue-600 border border-blue-200',
+    'delivered': 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+  };
+
+  const statusTextMap = {
+    'pending': 'รอยืนยัน',
+    'confirmed': 'ค้างส่ง/พร้อมแพ็ค',
+    'shipped': 'ส่งแล้ว/ระหว่างทาง',
+    'delivered': 'ส่งสำเร็จ'
+  };
+
+  const channelTextMap = {
+    'fb': 'Facebook',
+    'ig': 'Instagram',
+    'other': 'อื่นๆ'
+  };
+
+  return (
+    <div className="space-y-6" id="orders-view-container">
+      {/* Header bar */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between py-2 border-b border-slate-100">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight" id="orders-view-title">
+            ระบบจัดบันทึกบิลซื้อขาย (Sales Orders)
+          </h1>
+          <p className="text-slate-500 text-sm">เปิดบิลออเดอร์ เช็คสต็อก ตัดคลังสแนปช็อตราคาทุน WAC เพื่อรู้กำไรทันที</p>
+        </div>
+        <div className="mt-2 md:mt-0">
+          {!isAdding ? (
+            <button
+              onClick={() => setIsAdding(true)}
+              className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold py-2.5 px-4 rounded-xl flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+              id="start-order-btn"
+            >
+              <Plus className="w-4.5 h-4.5" /> เปิดบิลขายเก้าอี้ใหม่ (Fulfill)
+            </button>
+          ) : (
+            <button
+              onClick={() => setIsAdding(false)}
+              className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold py-2.5 px-4 rounded-xl transition-colors cursor-pointer"
+            >
+              กลับไปดูบิลขายทั้งหมด
+            </button>
+          )}
+        </div>
+      </div>
+
+      {isAdding ? (
+        // ================== STATE: NEW SALES ORDER FORM ==================
+        <form onSubmit={handleSaveOrder} className="space-y-6 animate-fade-in" id="new-order-form">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            {/* Left Column: Meta info */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-150 shadow-xs space-y-4 lg:col-span-1">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2">
+                  <ShoppingBag className="w-4.5 h-4.5 text-emerald-700" /> ข้อมูลการสั่งซื้อ (ไม่มีรายชื่อลูกค้า)
+                </h3>
+              </div>
+
+              {/* Order Date */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">วันที่ทำรายการ</label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+                  <input
+                    type="date"
+                    required
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="w-full text-xs p-2.5 pl-9 bg-slate-50 outline-hidden border border-slate-200 rounded-xl text-slate-800"
+                  />
+                </div>
+              </div>
+
+              {/* Channel */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">ช่องทางสั่งซื้อ</label>
+                <div className="grid grid-cols-3 gap-2" id="channel-tabs">
+                  {['fb', 'ig', 'other'].map(ch => (
+                    <button
+                      key={ch}
+                      type="button"
+                      onClick={() => setChannel(ch as OrderChannel)}
+                      className={`py-2 px-2.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                        channel === ch
+                          ? 'bg-emerald-700 text-white border-emerald-700'
+                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {ch === 'fb' ? 'Facebook' : ch === 'ig' ? 'Instagram' : 'อื่นๆ'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Delivery Type */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">วิธีการจัดส่งสินค้า</label>
+                <div className="grid grid-cols-2 gap-2" id="delivery-tabs">
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryType('shipping')}
+                    className={`py-2 px-2.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                      deliveryType === 'shipping'
+                        ? 'bg-emerald-700 text-white border-emerald-700'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    ส่งพัสดุขนส่ง
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryType('pickup')}
+                    className={`py-2 px-2.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                      deliveryType === 'pickup'
+                        ? 'bg-emerald-700 text-white border-emerald-700'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    นัดรับสินค้าที่ร้าน
+                  </button>
+                </div>
+              </div>
+
+              {/* Shipping fees (Conditional on deliveryType === 'shipping') */}
+              {deliveryType === 'shipping' && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3 animate-fade-in" id="shipping-fee-inputs-block">
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block border-b border-slate-200 pb-1 flex items-center gap-1">
+                    <Truck className="w-3.5 h-3.5 text-emerald-600" /> รายละเอียดค่าจัดส่งพัสดุ
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-500 mb-1 truncate">ค่าส่งเก็บจากลูกค้า</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={shippingFee !== undefined && shippingFee !== null ? shippingFee : ''}
+                        onChange={(e) => setShippingFee(Math.max(0, parseInt(e.target.value) || 0))}
+                        className="w-full text-xs p-2 bg-white outline-hidden border border-slate-200 rounded-lg text-slate-800 font-mono font-bold"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-500 mb-1 truncate">ต้นทุนค่าส่งจริง/ค่าแพ็ค</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={shippingCost !== undefined && shippingCost !== null ? shippingCost : ''}
+                        onChange={(e) => setShippingCost(Math.max(0, parseInt(e.target.value) || 0))}
+                        className="w-full text-xs p-2 bg-white outline-hidden border border-slate-200 rounded-lg text-slate-800 font-mono font-bold text-rose-600"
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-tight">
+                    * ค่าส่งที่เก็บลูกค้าจะบวกเพิ่มในยอดรวม ส่วนต้นทุนค่าส่งจะนำไปหักออกจากประมาณการกำไรสุทธิ
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">สถานะออเดอร์เริ่มต้น</label>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value as OrderStatus)}
+                  className="w-full text-xs p-3 bg-slate-50 outline-hidden border border-slate-200 rounded-xl text-slate-800"
+                >
+                  <option value="confirmed">จ่ายแล้ว/พร้อมแพ็คส่ง (Confirmed)</option>
+                  <option value="shipped">ส่งของแล้ว (Shipped)</option>
+                  <option value="delivered">จัดส่งสำเร็จลุล่วง (Delivered)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Right Column: Order Lines and Real-time Profit Preview */}
+            <div className="lg:col-span-2 space-y-6">
+              
+              {/* Items Card list */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-150 shadow-xs space-y-4">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                  <h3 className="font-bold text-slate-700 text-sm flex items-center gap-1.5">
+                    <ShoppingBag className="w-4.5 h-4.5 text-emerald-700" />
+                    รายการสั่งเก้าอี้
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={handleAddItemRow}
+                    className="text-emerald-700 hover:text-emerald-800 font-bold text-xs flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> เพิ่มแถวสินค้า
+                  </button>
+                </div>
+
+                {/* Rows mapped */}
+                <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                  {items.map((item, idx) => {
+                    const variant = db.variants.find(v => v.id === item.variant_id);
+                    const stockOnHand = db.stockItems.filter(s => s.variant_id === item.variant_id && s.status === 'in_stock').length;
+                    const error = stockOnHand < item.qty;
+
+                    // Resolve current parent hierarchy for Brand -> Model -> Variant
+                    const currentModel = variant ? db.models.find(m => m.id === variant.model_id) : null;
+                    const currentBrand = currentModel ? db.brands.find(b => b.id === currentModel.brand_id) : null;
+
+                    const activeBrandId = currentBrand?.id || '';
+                    const activeModelId = currentModel?.id || '';
+                    const activeVariantId = item.variant_id || '';
+
+                    // Filter cascading levels
+                    const modelsForBrand = db.models.filter(m => m.brand_id === activeBrandId);
+                    const variantsForModel = db.variants.filter(v => v.model_id === activeModelId);
+
+                    // Re-routing changers
+                    const handleBrandChange = (bId: string) => {
+                      const brandModels = db.models.filter(m => m.brand_id === bId);
+                      const matchedModel = brandModels[0];
+                      const modelVariants = matchedModel ? db.variants.filter(v => v.model_id === matchedModel.id) : [];
+                      const nextVariantId = modelVariants[0]?.id || '';
+                      handleUpdateItemRow(idx, 'variant_id', nextVariantId);
+                    };
+
+                    const handleModelChange = (mId: string) => {
+                      const modelVariants = db.variants.filter(v => v.model_id === mId);
+                      const nextVariantId = modelVariants[0]?.id || '';
+                      handleUpdateItemRow(idx, 'variant_id', nextVariantId);
+                    };
+
+                    const handleColorChange = (vId: string) => {
+                      handleUpdateItemRow(idx, 'variant_id', vId);
+                    };
+
+                    return (
+                      <div key={idx} className={`p-3 md:p-4 border rounded-xl space-y-3 relative group transition-all ${error ? 'bg-rose-50/40 border-rose-200' : 'bg-slate-50/50 border-slate-100'}`}>
+                        <div className="flex flex-col md:flex-row md:items-end gap-3.5">
+                          {/* Image Thumbnail Selection Preview */}
+                          <div className="shrink-0 flex items-center justify-center" id={`order-row-image-container-${idx}`}>
+                            {currentModel?.image ? (
+                              <img 
+                                src={currentModel.image} 
+                                className="w-14 h-14 md:w-16 md:h-16 rounded-xl object-cover border border-slate-200 cursor-zoom-in hover:scale-105 active:scale-95 transition-all duration-150 shadow-xs" 
+                                referrerPolicy="no-referrer"
+                                title="คลิกเพื่อขยายดูรูปภาพ"
+                                onClick={() => {
+                                  setPreviewImage(currentModel.image || null);
+                                  setPreviewTitle(`${currentBrand?.name || 'เก้าอี้'} ${currentModel.name}`);
+                                }}
+                              />
+                            ) : (
+                              <div className="w-14 h-14 md:w-16 md:h-16 rounded-xl bg-slate-100 border border-slate-200 flex flex-col items-center justify-center text-slate-400">
+                                <ImageIcon className="w-5 h-5 mb-0.5 text-slate-300" />
+                                <span className="text-[9px] font-sans font-bold">ไม่มีรูป</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="grow w-full flex flex-col gap-3 md:grid md:grid-cols-12 md:gap-3 md:items-end">
+                            
+                            {/* Sequential Choose variation cascading options */}
+                            <div className="md:col-span-6 grid grid-cols-1 md:grid-cols-3 gap-2">
+                              <div>
+                                <label className="block text-xs md:text-[10px] font-semibold text-slate-400 mb-1 uppercase truncate">ยี่ห้อ (Brand)</label>
+                                <select
+                                  value={activeBrandId}
+                                  onChange={(e) => handleBrandChange(e.target.value)}
+                                  className="w-full text-xs p-2.5 bg-white outline-hidden border border-slate-200 rounded-lg text-slate-800 focus:border-emerald-700"
+                                  required
+                                >
+                                  <option value="" disabled>-- เลือกยี่ห้อ --</option>
+                                  {db.brands.map(b => (
+                                    <option key={b.id} value={b.id}>{b.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              
+                              <div>
+                                <label className="block text-xs md:text-[10px] font-semibold text-slate-400 mb-1 uppercase truncate">รุ่น (Model)</label>
+                                <select
+                                  value={activeModelId}
+                                  onChange={(e) => handleModelChange(e.target.value)}
+                                  className="w-full text-xs p-2.5 bg-white outline-hidden border border-slate-200 rounded-lg text-slate-800 disabled:opacity-50 focus:border-emerald-700"
+                                  required
+                                  disabled={!activeBrandId}
+                                >
+                                  <option value="" disabled>-- เลือกรุ่น --</option>
+                                  {modelsForBrand.map(m => (
+                                    <option key={m.id} value={m.id}>{m.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-xs md:text-[10px] font-semibold text-slate-400 mb-1 uppercase truncate">สี (Color)</label>
+                                <select
+                                  value={activeVariantId}
+                                  onChange={(e) => handleColorChange(e.target.value)}
+                                  className="w-full text-xs p-2.5 bg-white outline-hidden border border-slate-200 rounded-lg text-slate-800 disabled:opacity-50 focus:border-emerald-700"
+                                  required
+                                  disabled={!activeModelId}
+                                >
+                                  <option value="" disabled>-- เลือกสี --</option>
+                                  {variantsForModel.map(v => (
+                                    <option key={v.id} value={v.id}>{v.color}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+
+                            {/* Order stock qty */}
+                            <div className="md:col-span-2">
+                              <label className="block text-xs md:text-[10px] font-semibold text-slate-400 mb-1 uppercase truncate">จำนวนสั่งซื้อ (ตัว)</label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={item.qty !== undefined && item.qty !== null ? item.qty : ''}
+                                onChange={(e) => handleUpdateItemRow(idx, 'qty', Math.max(1, parseInt(e.target.value) || 0))}
+                                className="w-full text-xs p-2.5 md:p-2 bg-white outline-hidden border border-slate-200 rounded-lg text-slate-800 font-mono text-left md:text-center focus:border-emerald-700"
+                                required
+                              />
+                            </div>
+
+                            {/* Unit Sale Price */}
+                            <div className="md:col-span-3">
+                              <label className="block text-xs md:text-[10px] font-semibold text-slate-400 mb-1 uppercase truncate">ราคาจริง/ตัว</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={item.sale_price !== undefined && item.sale_price !== null ? item.sale_price : ''}
+                                onChange={(e) => handleUpdateItemRow(idx, 'sale_price', Math.max(0, parseInt(e.target.value) || 0))}
+                                className="w-full text-xs p-2.5 md:p-2 bg-white outline-hidden border border-slate-200 rounded-lg text-slate-800 font-mono text-right focus:border-emerald-700"
+                                required
+                              />
+                            </div>
+
+
+
+                            {/* Trash button */}
+                            <div className="flex justify-end pt-1 md:pt-0 md:col-span-1 md:justify-center md:items-end">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveItemRow(idx)}
+                                disabled={items.length === 1}
+                                className="w-full md:w-auto p-2.5 md:p-2 text-slate-500 hover:text-rose-500 hover:bg-rose-50 border border-slate-200 md:border-none rounded-lg transition-colors cursor-pointer disabled:opacity-30 flex items-center justify-center gap-1.5 text-xs font-semibold"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                <span className="md:hidden text-rose-500">ลบสินค้าชิ้นนี้</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Detailed WAC Margin indicator */}
+                        <div className="flex flex-wrap items-center justify-between text-[11px] pt-1.5 border-t border-dashed border-slate-200 text-slate-500">
+                          <div className="flex items-center gap-1">
+                            <span>คลังมีของพร้อมส่ง:</span>{' '}
+                            <span className={`font-bold ${stockOnHand === 0 ? 'text-rose-500 font-bold' : stockOnHand < item.qty ? 'text-amber-500' : 'text-slate-800'}`}>
+                              {stockOnHand} ตัว
+                            </span>
+                            {error && (
+                              <span className="text-rose-500 font-bold ml-1 flex items-center gap-0.5 bg-rose-50 px-1.5 py-0.2 rounded">
+                                ⚠️ สต็อกไม่พอขาย!
+                              </span>
+                            )}
+                          </div>
+                          {variant && (
+                            <div className="flex items-center gap-2">
+                              <span>ต้นทุนเฉลี่ย (WAC): <strong className="font-mono text-slate-700">฿{variant.current_wac.toLocaleString()}</strong></span>
+                              <span>•</span>
+                              <span>
+                                ประมาณการกำไรบรรทัดนี้:{' '}
+                                <strong className={`font-mono text-xs ${(item.sale_price - item.discount - variant.current_wac) >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                  ฿{Math.round(((item.sale_price - item.discount - variant.current_wac) * item.qty) * 100) / 100}
+                                </strong>
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* ส่วนลดท้ายบิลเพิ่มเติม */}
+                <div className="mt-4 bg-slate-50 p-4 border border-slate-200/60 rounded-xl flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2 max-w-xs">
+                    <Percent className="w-4 h-4 text-emerald-600" />
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-500 uppercase">ส่วนลดท้ายบิลเพิ่มเติม (บาท)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={globalDiscount !== undefined && globalDiscount !== null ? globalDiscount : ''}
+                        onChange={(e) => setGlobalDiscount(Math.max(0, parseInt(e.target.value) || 0))}
+                        placeholder="0"
+                        className="text-xs p-1.5 mt-0.5 bg-white outline-hidden border border-slate-200 rounded-md text-slate-800 font-mono font-bold w-32 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500 transition-all"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Profit Real-time Preview Area (LEGENDARY UX) */}
+              <div className="bg-slate-900 text-white p-5 rounded-2xl space-y-4 shadow-sm" id="profit-preview">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-800 text-xs">
+                  <span className="text-slate-400 uppercase tracking-wider font-semibold">สรุปราคาขายและพรีวิวกำไรรวม (Real-time Preview)</span>
+                  <span className="flex items-center gap-0.5 text-emerald-400"><TrendingUp className="w-3.5 h-3.5" /> Live Costing</span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4 pt-1">
+                  <div>
+                    <p className="text-[10px] text-slate-400">ยอดรวมขายทั้งหมด (บาท)</p>
+                    <h3 className="text-base md:text-xl font-bold font-mono text-white">
+                      ฿{totalSale_สด.toLocaleString()}
+                    </h3>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-400">มูลค่าฐานต้นทุน WAC สต็อกรวม</p>
+                    <h3 className="text-base md:text-xl font-bold font-mono text-slate-300">
+                      ฿{totalCost_สด.toLocaleString('th-TH', { maximumFractionDigits: 2 })}
+                    </h3>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-emerald-400 font-bold">ประมาณการกำไรสุทธิ</p>
+                    <h3 className={`text-lg md:text-2xl font-extrabold font-mono ${totalProfit_สด >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      ฿{totalProfit_สด.toLocaleString('th-TH', { maximumFractionDigits: 2 })}
+                    </h3>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 justify-end pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsAdding(false)}
+                    className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white"
+                  >
+                    ยกเลิกกลับ
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={calculatedItems.some(i => i.error)}
+                    className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center gap-1 shadow-md disabled:bg-slate-700 disabled:text-slate-400 cursor-pointer transition-colors"
+                  >
+                    <Check className="w-4 h-4" /> เสร็จสิ้นการเปิดออเดอร์
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </form>
+      ) : (
+        // ================== STATE: ORDERS HISTORY VIEW ==================
+        <div className="space-y-4 animate-fade-in" id="orders-list-view">
+          {/* Filters Bar */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs flex flex-col md:flex-row gap-4 justify-between items-stretch md:items-center">
+            {/* Left side Search */}
+            <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl flex-1 max-w-sm text-xs">
+              <Search className="w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="ค้นหารหัสบิล, ลูกค้า, เบอร์โทรศ์ หรือ รุ่น..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="bg-transparent outline-hidden w-full text-slate-700 text-xs"
+              />
+            </div>
+
+            {/* Right side status toggles */}
+            <div className="flex gap-1.5 overflow-x-auto text-[11px] bg-slate-100 p-1 rounded-xl self-start" id="status-filter-group">
+              {[
+                { id: 'all', label: 'ทั้งหมด' },
+                { id: 'confirmed', label: 'รอส่ง' },
+                { id: 'shipped', label: 'ส่งแล้ว' },
+                { id: 'delivered', label: 'สำเร็จ' }
+              ].map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setStatusFilter(f.id)}
+                  className={`py-1.5 px-3.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                    statusFilter === f.id
+                      ? 'bg-white text-slate-800 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Orders timeline Cards */}
+          <div className="space-y-3" id="orders-grid">
+            {filteredOrders.length > 0 ? (
+              filteredOrders.map(order => {
+                // No customer tracking
+                const orderSubTotal = order.items.reduce((sum, item) => sum + item.final_price, 0);
+                const orderNetAmount = orderSubTotal + (order.shipping_fee || 0) - order.discount;
+                const totalBatchProfit = order.items.reduce((sum, item) => sum + item.profit, 0) + (order.shipping_fee || 0) - (order.shipping_cost || 0) - order.discount;
+
+                return (
+                  <div 
+                    key={order.id} 
+                    className="bg-white border border-slate-150/40 rounded-2xl p-5 shadow-xs flex flex-col md:flex-row justify-between gap-4 relative group"
+                  >
+                    {/* Trash float delete inside and release stock */}
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`⚠️ คำเตือน! คุณกำลังลบออเดอร์ "${order.id}" การลบจะเป็นการปล่อยสต็อกเก้าอี้กางจำนวน ${order.items.length} ตัวคืนสู่คลังทันที ยืนยันที่จะปล่อยสต็อกบิลและลบหรือไม่?`)) {
+                          deleteOrder(order.id);
+                        }
+                      }}
+                      className="absolute right-4 top-4 p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="ลบออเดอร์และคืนสต็อกของ"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+
+                    {/* Left Meta details */}
+                    <div className="space-y-2.5 max-w-md text-xs">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono font-bold text-slate-500 text-sm">
+                          {order.id.replace('ord-', '#')}
+                        </span>
+                        <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${statusClassMap[order.status]}`}>
+                          {statusTextMap[order.status]}
+                        </span>
+                        <span className="text-[10px] bg-slate-100 border border-slate-200 text-slate-600 px-2 py-0.5 rounded font-mono font-medium">
+                          ผ่าน {channelTextMap[order.channel]}
+                        </span>
+                        <span className="text-[10px] bg-purple-50 text-purple-700 px-2 border border-purple-100 py-0.5 rounded font-medium">
+                          {order.delivery_type === 'shipping' ? '🚚 ส่งพัสดุ' : '🏪 นัดรับหน้าร้าน'}
+                        </span>
+                      </div>
+
+                      {/* Date Info */}
+                      <div>
+                        <div className="text-[11px] text-slate-500 font-medium">
+                          วันสั่งซื้อ: {order.date}
+                        </div>
+                      </div>
+
+                      {/* Line Items display */}
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-[11px] space-y-1">
+                        <strong className="text-slate-500 block mb-1">รายการเก้าอี้ในบิล ({order.items.length} ตัว):</strong>
+                        {order.items.map((oi, idx) => {
+                          const variant = db.variants.find(v => v.id === oi.variant_id);
+                          const model = variant ? db.models.find(m => m.id === variant.model_id) : null;
+                          const brand = model ? db.brands.find(b => b.id === model.brand_id) : null;
+                          return (
+                            <div key={idx} className="flex items-center justify-between gap-3 text-slate-700 border-b border-slate-100 last:border-b-0 py-1.5 first:pt-0 last:pb-0">
+                              <div className="flex items-center gap-2 min-w-0">
+                                {model?.image ? (
+                                  <img 
+                                    src={model.image} 
+                                    className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0 cursor-zoom-in active:scale-95 transition-transform" 
+                                    referrerPolicy="no-referrer"
+                                    title="คลิกเพื่อขยายดูรูปภาพ"
+                                    onClick={() => {
+                                      setPreviewImage(model.image || null);
+                                      setPreviewTitle(`${brand?.name || 'เก้าอี้'} ${model.name}`);
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
+                                    <ImageIcon className="w-4 h-4 text-slate-300" />
+                                  </div>
+                                )}
+                                <div className="truncate">
+                                  {model?.name} (<strong className="text-slate-600">{variant?.color}</strong>)
+                                </div>
+                              </div>
+                              <span className="font-mono text-right shrink-0">
+                                ฿{oi.final_price?.toLocaleString()} <span className="text-slate-400 block text-[9px]">(ทุน WAC: ฿{Math.round(oi.wac_at_sale)})</span>
+                              </span>
+                            </div>
+                          );
+                        })}
+                        {order.discount > 0 && (
+                          <div className="text-rose-500 font-semibold text-right pt-1 border-t border-dashed border-slate-200">
+                            ส่วนลดบิลเพิ่มเติม: -฿{order.discount.toLocaleString()}
+                          </div>
+                        )}
+                        {order.delivery_type === 'shipping' && ((order.shipping_fee || 0) > 0 || (order.shipping_cost || 0) > 0) && (
+                          <div className="text-slate-500 text-right pt-1 border-t border-dashed border-slate-200 space-y-0.5 font-mono text-[10px]">
+                            {order.shipping_fee !== undefined && order.shipping_fee > 0 && (
+                              <div className="text-emerald-700">ค่าส่งเก็บจากลูกค้า: +฿{order.shipping_fee.toLocaleString()}</div>
+                            )}
+                            {order.shipping_cost !== undefined && order.shipping_cost > 0 && (
+                              <div className="text-rose-600">ต้นทุนค่าจัดส่งจริง: -฿{order.shipping_cost.toLocaleString()}</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right Price details and fast action togglers */}
+                    <div className="flex flex-row md:flex-col justify-between items-end gap-3 text-right">
+                      {/* Pricing total */}
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-slate-400 uppercase">ยอดบิลรวมสุทธิ</p>
+                        <h4 className="text-base md:text-xl font-bold font-mono text-slate-800">
+                          ฿{orderNetAmount.toLocaleString()}
+                        </h4>
+                        <span className="text-[9px] font-mono text-slate-400 block">
+                          หักลดแล้ว {order.discount > 0 ? `(มีลดเพิ่ม ฿${order.discount})` : ''}
+                          {order.shipping_fee !== undefined && order.shipping_fee > 0 ? ` (+ ค่าส่ง ฿${order.shipping_fee})` : ''}
+                        </span>
+                        <div className="text-[10px] mt-1 font-semibold flex items-center gap-1 justify-end">
+                          <span className="text-slate-400">กำไรสุทธิแบรนด์:</span>
+                          <span className={`font-mono text-xs ${totalBatchProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                            ฿{totalBatchProfit.toLocaleString('th-TH', { maximumFractionDigits: 1 })}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Fast status trigger updater */}
+                      <div className="flex justify-end gap-1.5 self-end flex-wrap max-w-xs mt-2" id="quick-order-actions">
+                        <span className="text-[9px] text-slate-400 block w-full mb-1">เปลี่ยนสถานะด่วน:</span>
+                        {order.status === 'pending' && (
+                          <button
+                            onClick={() => updateOrderStatus(order.id, 'confirmed')}
+                            className="text-[10px] bg-slate-900 text-white font-semibold py-1 px-2.5 rounded-lg hover:bg-slate-800 cursor-pointer"
+                          >
+                            ยืนยันการโอนเงินแล้ว
+                          </button>
+                        )}
+                        {order.status === 'confirmed' && (
+                          <button
+                            onClick={() => updateOrderStatus(order.id, 'shipped')}
+                            className="text-[10px] bg-slate-800 text-white font-semibold py-1 px-2.5 rounded-lg hover:bg-slate-900 cursor-pointer"
+                          >
+                            อัปเดต: ปิดจ๊อบส่งพัสดุ
+                          </button>
+                        )}
+                        {order.status === 'shipped' && (
+                          <button
+                            onClick={() => updateOrderStatus(order.id, 'delivered')}
+                            className="text-[10px] bg-emerald-600 text-white font-semibold py-1 px-2.5 rounded-lg hover:bg-emerald-700 cursor-pointer"
+                          >
+                            ยืนยัน: ของส่งถึงมือแล้ว
+                          </button>
+                        )}
+                        {order.status === 'delivered' && (
+                          <span className="text-[10px] text-emerald-500 font-bold bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded flex items-center gap-0.5">
+                            <Check className="w-3.5 h-3.5" /> บัญชีบันทึกเรียบร้อย
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="bg-white p-12 text-center text-slate-400 border border-slate-150 rounded-2xl">
+                ไม่พบบันทึกใบสั่งซื้อตามตัวกรองที่เลือก
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Quick Customer modal removed */}
+
+      {/* --- IMAGE LIGHTBOX MODAL --- */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center p-4 z-50 animate-fade-in"
+          id="order-image-lightbox-modal"
+          onClick={() => setPreviewImage(null)}
+        >
+          {/* Top panel: Title & Close Button */}
+          <div className="w-full max-w-2xl flex justify-between items-center text-white mb-3 px-1 animate-slide-up">
+            <span className="text-xs font-bold bg-emerald-700 text-white px-2.5 py-1 rounded-full uppercase tracking-tight shadow-sm">
+              {previewTitle || 'ขยายรูปภาพ'}
+            </span>
+            <button
+              onClick={() => setPreviewImage(null)}
+              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 text-white flex items-center justify-center font-bold text-sm transition-all shadow-md cursor-pointer"
+              title="ปิดหน้าต่าง"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Interactive Zoomable Image container */}
+          <div 
+            className="relative w-full max-w-2xl max-h-[75vh] flex items-center justify-center bg-slate-900/50 rounded-2xl overflow-hidden border border-white/10 shadow-2xl animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img 
+              src={previewImage} 
+              alt={previewTitle}
+              className="max-w-full max-h-[75vh] object-contain rounded-2xl select-none"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+
+          <p className="text-[11px] text-white/50 mt-4 animate-slide-up select-none">
+            คลิกพื้นที่สีดำรอบนอกเพื่อกลับเข้าสู่หน้าหลัก
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};

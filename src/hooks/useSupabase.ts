@@ -1,0 +1,198 @@
+import { useState, useEffect } from 'react';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { AppDatabase } from '../types';
+
+const URL_LS_KEY = 'campchair_supabase_url';
+const KEY_LS_KEY = 'campchair_supabase_anon_key';
+const AUTO_SYNC_LS_KEY = 'campchair_supabase_auto_sync';
+const ROW_ID_LS_KEY = 'campchair_supabase_row_id';
+
+export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
+  const [url, setUrl] = useState(() => localStorage.getItem(URL_LS_KEY) || (import.meta.env.VITE_SUPABASE_URL || ''));
+  const [anonKey, setAnonKey] = useState(() => localStorage.getItem(KEY_LS_KEY) || (import.meta.env.VITE_SUPABASE_ANON_KEY || ''));
+  const [rowId, setRowId] = useState(() => localStorage.getItem(ROW_ID_LS_KEY) || 'default');
+  const [autoSync, setAutoSync] = useState(true);
+  const [client, setClient] = useState<SupabaseClient | null>(null);
+  const [status, setStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [lastSynced, setLastSynced] = useState<string>('');
+  const [isPushing, setIsPushing] = useState(false);
+  const [isPulling, setIsPulling] = useState(false);
+
+  // Save config to LS
+  useEffect(() => {
+    localStorage.setItem(URL_LS_KEY, url);
+  }, [url]);
+
+  useEffect(() => {
+    localStorage.setItem(KEY_LS_KEY, anonKey);
+  }, [anonKey]);
+
+  useEffect(() => {
+    localStorage.setItem(ROW_ID_LS_KEY, rowId);
+  }, [rowId]);
+
+  useEffect(() => {
+    localStorage.setItem(AUTO_SYNC_LS_KEY, String(autoSync));
+  }, [autoSync]);
+
+  // Re-initialize client when url or key changes
+  useEffect(() => {
+    if (url.trim() && anonKey.trim()) {
+      try {
+        setStatus('connecting');
+        const supabase = createClient(url.trim(), anonKey.trim(), {
+          auth: { persistSession: false }
+        });
+        setClient(supabase);
+        
+        // Test connection
+        const testConnection = async () => {
+          try {
+            const { error } = await supabase
+              .from('campchair_backoffice')
+              .select('id')
+              .limit(1);
+
+            if (error) {
+              if (error.code === '42P01') {
+                setStatus('connected'); // Connected to supabase, but table needs creation
+                setErrorMsg('ตาราง "campchair_backoffice" ยังไม่ถูกสร้างใน Supabase ของคุณ กรุณารันคำสั่ง SQL เพื่อสร้างตาราง');
+              } else {
+                setStatus('error');
+                setErrorMsg(`เชื่อมต่อล้มเหลว: ${error.message}`);
+              }
+            } else {
+              setStatus('connected');
+              setErrorMsg('');
+            }
+          } catch (err: any) {
+            setStatus('error');
+            setErrorMsg(err?.message || 'ไม่สามารถเชื่อมต่อได้ (กรุณาเช็คอินเทอร์เน็ตหรือความถูกต้องของ URL)');
+          }
+        };
+        testConnection();
+      } catch (err: any) {
+        setClient(null);
+        setStatus('error');
+        setErrorMsg(err?.message || 'URL หรือ API Key ไม่ถูกต้อง');
+      }
+    } else {
+      setClient(null);
+      setStatus('disconnected');
+      setErrorMsg('');
+    }
+  }, [url, anonKey]);
+
+  // Push to Supabase
+  const pushToSupabase = async (currentDb: AppDatabase = db): Promise<{ success: boolean; error?: string }> => {
+    if (!client) {
+      return { success: false, error: 'ไม่ได้กำหนดค่าการเชื่อมต่อ Supabase' };
+    }
+    setIsPushing(true);
+    try {
+      const { error } = await client
+        .from('campchair_backoffice')
+        .upsert({
+          id: rowId,
+          data: currentDb,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+
+      setIsPushing(false);
+      if (error) {
+        if (error.code === '42P01') {
+          return { success: false, error: 'ไม่พบตาราง "campchair_backoffice" ใน Supabase กรุณารัน SQL เพื่อสร้างตารางก่อน' };
+        }
+        return { success: false, error: error.message };
+      }
+      setLastSynced(new Date().toLocaleTimeString('th-TH'));
+      return { success: true };
+    } catch (err: any) {
+      setIsPushing(false);
+      return { success: false, error: err?.message || 'เกิดข้อผิดพลาดในการอัปโหลดข้อมูล' };
+    }
+  };
+
+  // Pull from Supabase
+  const pullFromSupabase = async (): Promise<{ success: boolean; data?: AppDatabase; error?: string }> => {
+    if (!client) {
+      return { success: false, error: 'ไม่ได้กำหนดค่าการเชื่อมต่อ Supabase' };
+    }
+    setIsPulling(true);
+    try {
+      const { data, error } = await client
+        .from('campchair_backoffice')
+        .select('data, updated_at')
+        .eq('id', rowId)
+        .maybeSingle();
+
+      setIsPulling(false);
+      if (error) {
+        if (error.code === '42P01') {
+          return { success: false, error: 'ไม่พบตาราง "campchair_backoffice" ใน Supabase กรุณารัน SQL เพื่อสร้างตารางก่อน' };
+        }
+        return { success: false, error: error.message };
+      }
+
+      if (data && data.data) {
+        const remoteDb = data.data as AppDatabase;
+        
+        // Basic schema checking to avoid corruption
+        if (
+          Array.isArray(remoteDb.brands) &&
+          Array.isArray(remoteDb.models) &&
+          Array.isArray(remoteDb.variants)
+        ) {
+          setDb(remoteDb);
+          setLastSynced(new Date().toLocaleTimeString('th-TH'));
+          return { success: true, data: remoteDb };
+        } else {
+          return { success: false, error: 'รูปแบบข้อมูลใน Supabase ไม่ถูกต้องหรือเสียหาย' };
+        }
+      } else {
+        return { success: false, error: 'ยังไม่มีข้อมูลสำรองในคีย์นี้บน Supabase (กรุณากด "อัปโหลดข้อมูล" เพื่อตั้งต้น)' };
+      }
+    } catch (err: any) {
+      setIsPulling(false);
+      return { success: false, error: err?.message || 'เกิดข้อผิดพลาดในการดาวน์โหลดข้อมูล' };
+    }
+  };
+
+  // Debounced Auto Sync on database changes
+  useEffect(() => {
+    if (!autoSync || status !== 'connected' || !client) return;
+
+    const timer = setTimeout(() => {
+      pushToSupabase();
+    }, 1000); // 1 second debounce
+
+    return () => clearTimeout(timer);
+  }, [db, autoSync, status]);
+
+  // Auto Pull on connection if autoSync is true
+  useEffect(() => {
+    if (autoSync && status === 'connected' && client) {
+      pullFromSupabase();
+    }
+  }, [status]);
+
+  return {
+    url,
+    setUrl,
+    anonKey,
+    setAnonKey,
+    rowId,
+    setRowId,
+    autoSync,
+    setAutoSync,
+    status,
+    errorMsg,
+    lastSynced,
+    isPushing,
+    isPulling,
+    pushToSupabase,
+    pullFromSupabase,
+    client,
+  };
+}
