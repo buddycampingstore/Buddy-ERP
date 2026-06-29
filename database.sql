@@ -14,8 +14,22 @@ create index if not exists buddy_erp_backoffice_updated_at_idx
 create index if not exists buddy_erp_backoffice_data_gin_idx
   on public.buddy_erp_backoffice using gin (data);
 
--- The current frontend uses the Supabase anon key directly and expects simple read/write access.
-alter table public.buddy_erp_backoffice disable row level security;
+alter table public.buddy_erp_backoffice enable row level security;
+
+drop policy if exists "buddy_erp_backoffice_authenticated_read" on public.buddy_erp_backoffice;
+create policy "buddy_erp_backoffice_authenticated_read"
+  on public.buddy_erp_backoffice
+  for select
+  to authenticated
+  using (true);
+
+drop policy if exists "buddy_erp_backoffice_authenticated_write" on public.buddy_erp_backoffice;
+create policy "buddy_erp_backoffice_authenticated_write"
+  on public.buddy_erp_backoffice
+  for all
+  to authenticated
+  using (true)
+  with check (true);
 
 comment on table public.buddy_erp_backoffice is
   'Single-row JSON backup/sync table used by the current Buddy ERP frontend.';

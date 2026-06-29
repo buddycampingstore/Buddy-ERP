@@ -16,6 +16,7 @@ Backoffice สำหรับจัดการสินค้า สต็อ�
    VITE_SUPABASE_URL="https://your-project.supabase.co"
    VITE_SUPABASE_ANON_KEY="your-current-anon-public-key"
    VITE_SUPABASE_TABLE="buddy_erp_backoffice"
+   VITE_SUPABASE_ROW_ID="default"
    ```
 
 3. Run the app:
@@ -35,7 +36,20 @@ create table if not exists public.buddy_erp_backoffice (
   updated_at timestamptz not null default timezone('utc'::text, now())
 );
 
-alter table public.buddy_erp_backoffice disable row level security;
+alter table public.buddy_erp_backoffice enable row level security;
+
+create policy "buddy_erp_backoffice_authenticated_read"
+  on public.buddy_erp_backoffice
+  for select
+  to authenticated
+  using (true);
+
+create policy "buddy_erp_backoffice_authenticated_write"
+  on public.buddy_erp_backoffice
+  for all
+  to authenticated
+  using (true)
+  with check (true);
 ```
 
-After login, open "ตั้งค่า / สำรองข้อมูล" to set the table name, upload local data, or pull data from Supabase.
+After login, open "ตั้งค่า / สำรองข้อมูล" to upload local data or pull data from Supabase. Supabase URL, anon key, table name, and row ID are read from `.env.local` only.

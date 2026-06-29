@@ -2,18 +2,18 @@ import { useState, useEffect } from 'react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { AppDatabase } from '../types';
 
-const URL_LS_KEY = 'buddy_erp_supabase_url';
-const KEY_LS_KEY = 'buddy_erp_supabase_anon_key';
 const AUTO_SYNC_LS_KEY = 'buddy_erp_supabase_auto_sync';
-const ROW_ID_LS_KEY = 'buddy_erp_supabase_row_id';
-const TABLE_LS_KEY = 'buddy_erp_supabase_table';
 const DEFAULT_TABLE = 'buddy_erp_backoffice';
 const LEGACY_LS_KEYS = [
   'campchair_supabase_url',
   'campchair_supabase_anon_key',
   'campchair_supabase_auto_sync',
   'campchair_supabase_row_id',
-  'campchair_supabase_table'
+  'campchair_supabase_table',
+  'buddy_erp_supabase_url',
+  'buddy_erp_supabase_anon_key',
+  'buddy_erp_supabase_table',
+  'buddy_erp_supabase_row_id'
 ];
 
 function clearLegacySupabaseConfig() {
@@ -21,13 +21,10 @@ function clearLegacySupabaseConfig() {
 }
 
 export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
-  const [url, setUrl] = useState(() => {
-    clearLegacySupabaseConfig();
-    return import.meta.env.VITE_SUPABASE_URL || localStorage.getItem(URL_LS_KEY) || '';
-  });
-  const [anonKey, setAnonKey] = useState(() => import.meta.env.VITE_SUPABASE_ANON_KEY || localStorage.getItem(KEY_LS_KEY) || '');
-  const [tableName, setTableName] = useState(() => import.meta.env.VITE_SUPABASE_TABLE || localStorage.getItem(TABLE_LS_KEY) || DEFAULT_TABLE);
-  const [rowId, setRowId] = useState(() => localStorage.getItem(ROW_ID_LS_KEY) || 'default');
+  const url = import.meta.env.VITE_SUPABASE_URL || '';
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  const tableName = import.meta.env.VITE_SUPABASE_TABLE || DEFAULT_TABLE;
+  const rowId = import.meta.env.VITE_SUPABASE_ROW_ID || 'default';
   const [autoSync, setAutoSync] = useState(() => {
     const stored = localStorage.getItem(AUTO_SYNC_LS_KEY);
     return stored === null ? true : stored === 'true';
@@ -43,23 +40,6 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
     clearLegacySupabaseConfig();
   }, []);
 
-  // Save config to LS
-  useEffect(() => {
-    localStorage.setItem(URL_LS_KEY, url);
-  }, [url]);
-
-  useEffect(() => {
-    localStorage.setItem(KEY_LS_KEY, anonKey);
-  }, [anonKey]);
-
-  useEffect(() => {
-    localStorage.setItem(TABLE_LS_KEY, tableName);
-  }, [tableName]);
-
-  useEffect(() => {
-    localStorage.setItem(ROW_ID_LS_KEY, rowId);
-  }, [rowId]);
-
   useEffect(() => {
     localStorage.setItem(AUTO_SYNC_LS_KEY, String(autoSync));
   }, [autoSync]);
@@ -70,36 +50,15 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
       try {
         setStatus('connecting');
         const supabase = createClient(url.trim(), anonKey.trim(), {
-          auth: { persistSession: false }
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: false
+          }
         });
         setClient(supabase);
-        
-        // Test connection
-        const testConnection = async () => {
-          try {
-            const { error } = await supabase
-              .from(tableName)
-              .select('id')
-              .limit(1);
-
-            if (error) {
-              if (error.code === '42P01') {
-                setStatus('connected'); // Connected to supabase, but table needs creation
-                setErrorMsg(`ตาราง "${tableName}" ยังไม่ถูกสร้างใน Supabase ของคุณ กรุณารันคำสั่ง SQL เพื่อสร้างตาราง`);
-              } else {
-                setStatus('error');
-                setErrorMsg(`เชื่อมต่อล้มเหลว: ${error.message}`);
-              }
-            } else {
-              setStatus('connected');
-              setErrorMsg('');
-            }
-          } catch (err: any) {
-            setStatus('error');
-            setErrorMsg(err?.message || 'ไม่สามารถเชื่อมต่อได้ (กรุณาเช็คอินเทอร์เน็ตหรือความถูกต้องของ URL)');
-          }
-        };
-        testConnection();
+        setStatus('connected');
+        setErrorMsg('');
       } catch (err: any) {
         setClient(null);
         setStatus('error');
@@ -207,13 +166,9 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
 
   return {
     url,
-    setUrl,
     anonKey,
-    setAnonKey,
     tableName,
-    setTableName,
     rowId,
-    setRowId,
     autoSync,
     setAutoSync,
     status,

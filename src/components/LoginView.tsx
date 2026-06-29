@@ -1,21 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useState } from 'react';
+import { motion } from 'motion/react';
 import { 
   Lock, 
-  User, 
   Eye, 
   EyeOff, 
   Tent, 
-  ShieldCheck, 
   RefreshCw, 
   Mail, 
   Database, 
-  Settings, 
   AlertTriangle, 
   Plus, 
-  LogIn,
-  CheckCircle,
-  HelpCircle
+  LogIn
 } from 'lucide-react';
 import logoImg from '../assets/images/logo_1782269852938.jpg';
 import { SupabaseClient } from '@supabase/supabase-js';
@@ -25,11 +20,7 @@ interface LoginViewProps {
   status: 'disconnected' | 'connecting' | 'connected' | 'error';
   errorMsg: string;
   url: string;
-  setUrl: (url: string) => void;
-  anonKey: string;
-  setAnonKey: (key: string) => void;
   tableName: string;
-  setTableName: (tableName: string) => void;
   onLoginSuccess: () => void;
 }
 
@@ -38,11 +29,7 @@ export function LoginView({
   status, 
   errorMsg, 
   url, 
-  setUrl, 
-  anonKey, 
-  setAnonKey, 
   tableName,
-  setTableName,
   onLoginSuccess 
 }: LoginViewProps) {
   // Supabase Auth form states
@@ -53,11 +40,6 @@ export function LoginView({
   const [supabaseLoading, setSupabaseLoading] = useState(false);
   const [supabaseMessage, setSupabaseMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Connection settings display toggle
-  const [showConnectionConfig, setShowConnectionConfig] = useState(false);
-  const [inputUrl, setInputUrl] = useState(url);
-  const [inputAnonKey, setInputAnonKey] = useState(anonKey);
-  const [inputTableName, setInputTableName] = useState(tableName);
   const activeProjectHost = (() => {
     try {
       return url ? new URL(url).host : '';
@@ -66,26 +48,13 @@ export function LoginView({
     }
   })();
 
-  // Update input values when prop values change
-  useEffect(() => {
-    setInputUrl(url);
-  }, [url]);
-
-  useEffect(() => {
-    setInputAnonKey(anonKey);
-  }, [anonKey]);
-
-  useEffect(() => {
-    setInputTableName(tableName);
-  }, [tableName]);
-
   // Submit handler for Supabase Auth
   const handleSupabaseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!client) {
       setSupabaseMessage({ 
         type: 'error', 
-        text: 'ไม่ได้ตั้งค่าการเชื่อมต่อ Supabase กรุณาเปิดแผงตั้งค่าและระบุ URL / Anon Key' 
+        text: 'ไม่ได้ตั้งค่าการเชื่อมต่อ Supabase กรุณากำหนด VITE_SUPABASE_URL และ VITE_SUPABASE_ANON_KEY ใน .env.local'
       });
       return;
     }
@@ -146,24 +115,6 @@ export function LoginView({
     }
   };
 
-  // Save Connection Config
-  const handleSaveConnection = (e: React.FormEvent) => {
-    e.preventDefault();
-    const nextTableName = inputTableName.trim() || 'buddy_erp_backoffice';
-    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(nextTableName)) {
-      setSupabaseMessage({
-        type: 'error',
-        text: 'ชื่อตาราง Supabase ใช้ได้เฉพาะ a-z, A-Z, 0-9 และ _ และต้องไม่ขึ้นต้นด้วยตัวเลข'
-      });
-      return;
-    }
-    setUrl(inputUrl.trim());
-    setAnonKey(inputAnonKey.trim());
-    setTableName(nextTableName);
-    setSupabaseMessage(null);
-    alert('บันทึกค่าเชื่อมต่อเรียบร้อย กำลังทดสอบเชื่อมต่อใหม่...');
-  };
-
   return (
     <div className="min-h-screen w-full bg-slate-900 flex items-center justify-center p-4 relative overflow-hidden font-sans">
       {/* Decorative amber and green ambient glowing circles */}
@@ -185,15 +136,9 @@ export function LoginView({
               <strong className="font-bold">ยังไม่พร้อมใช้งาน Supabase Auth:</strong>
               <p className="opacity-90 leading-relaxed text-[11px]">
                 {status === 'disconnected' 
-                  ? 'ยังไม่ได้ตั้งค่าเชื่อมต่อกับบริการคลาวด์ Supabase ของคุณ' 
+                  ? 'ยังไม่ได้ตั้งค่า VITE_SUPABASE_URL หรือ VITE_SUPABASE_ANON_KEY ใน .env.local'
                   : `การเชื่อมต่อขัดข้อง: ${errorMsg || 'กรุณาตรวจสอบ URL หรือ API Anon Key'}`}
               </p>
-              <button 
-                onClick={() => setShowConnectionConfig(true)}
-                className="mt-1.5 inline-flex items-center gap-1 font-extrabold text-[10px] text-amber-400 hover:text-amber-200 uppercase cursor-pointer underline"
-              >
-                <Settings className="w-3 h-3" /> ตั้งค่าเชื่อมต่อตรงนี้
-              </button>
             </div>
           </motion.div>
         )}
@@ -333,99 +278,12 @@ export function LoginView({
               </span>
               {activeProjectHost && (
                 <span className="block max-w-[220px] truncate font-mono text-[10px] mt-1" title={url}>
-                  {activeProjectHost}
+                  {activeProjectHost} / {tableName}
                 </span>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => setShowConnectionConfig((current) => !current)}
-              className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 underline cursor-pointer"
-            >
-              เปลี่ยน API
-            </button>
           </div>
         </motion.div>
-
-        {/* Supabase connection configuration panel */}
-        <AnimatePresence>
-          {showConnectionConfig && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="bg-slate-950/90 border border-slate-800 rounded-3xl p-5 shadow-2xl relative overflow-hidden"
-            >
-              <div className="absolute top-0 left-0 w-full h-[3px] bg-gradient-to-r from-emerald-500 to-amber-500" />
-              <h3 className="font-bold text-white text-xs mb-3.5 flex items-center gap-2">
-                <Database className="w-4.5 h-4.5 text-emerald-500" />
-                ตั่งค่าเชื่อมต่อบริการคลาวด์ Supabase
-              </h3>
-
-              <form onSubmit={handleSaveConnection} className="space-y-3.5">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                    Supabase Project URL
-                  </label>
-                  <input
-                    type="url"
-                    required
-                    placeholder="เช่น https://your-project.supabase.co"
-                    value={inputUrl}
-                    onChange={(e) => setInputUrl(e.target.value)}
-                    className="w-full text-[11px] p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-300 placeholder-slate-600 outline-none focus:border-emerald-600 font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                    Anon Public API Key
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="เช่น eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                    value={inputAnonKey}
-                    onChange={(e) => setInputAnonKey(e.target.value)}
-                    className="w-full text-[11px] p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-300 placeholder-slate-600 outline-none focus:border-emerald-600 font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                    Supabase Table Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="buddy_erp_backoffice"
-                    value={inputTableName}
-                    onChange={(e) => setInputTableName(e.target.value)}
-                    className="w-full text-[11px] p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-300 placeholder-slate-600 outline-none focus:border-emerald-600 font-mono"
-                  />
-                </div>
-
-                <div className="bg-slate-900/40 p-2.5 rounded-lg border border-slate-800/60 text-[10px] text-slate-400 space-y-1">
-                  <p className="font-bold flex items-center gap-1 text-slate-300">
-                    <HelpCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    ขั้นตอนความปลอดภัยสำหรับใช้งานออนไลน์:
-                  </p>
-                  <p className="leading-relaxed">
-                    เมื่อเชื่อมต่อแล้ว ระบบจะสร้างตารางเก็บข้อมูลแบรนด์ สต็อกสินค้า WAC และประวัติออเดอร์ แอดมินทุกคนสามารถล็อกอินเพื่อแก้ไขคลังจากคนละเครื่องและซิงค์ข้อมูลผ่าน API ได้โดยตรง
-                  </p>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full bg-slate-800 hover:bg-slate-700 text-slate-100 font-extrabold text-[11px] py-2.5 rounded-xl border border-slate-700 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <CheckCircle className="w-4 h-4 text-emerald-400" />
-                  บันทึกความเชื่อมโยงและเชื่อมใหม่
-                </button>
-              </form>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
     </div>
   );

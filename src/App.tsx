@@ -67,13 +67,9 @@ export default function App() {
 
   const {
     url: supabaseUrl,
-    setUrl: setSupabaseUrl,
     anonKey: supabaseAnonKey,
-    setAnonKey: setSupabaseAnonKey,
     tableName: supabaseTableName,
-    setTableName: setSupabaseTableName,
     rowId: supabaseRowId,
-    setRowId: setSupabaseRowId,
     autoSync: supabaseAutoSync,
     setAutoSync: setSupabaseAutoSync,
     status: supabaseStatus,
@@ -161,10 +157,6 @@ export default function App() {
   // --- BACKUP PANEL STATE ---
   const [backupInput, setBackupInput] = useState('');
   const [copiedSql, setCopiedSql] = useState(false);
-  const [supabaseFormUrl, setSupabaseFormUrl] = useState(supabaseUrl);
-  const [supabaseFormAnonKey, setSupabaseFormAnonKey] = useState(supabaseAnonKey);
-  const [supabaseFormTableName, setSupabaseFormTableName] = useState(supabaseTableName);
-  const [supabaseFormRowId, setSupabaseFormRowId] = useState(supabaseRowId);
   const safeSupabaseTableName = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(supabaseTableName) ? supabaseTableName : 'buddy_erp_backoffice';
   const sqlCode = `create table if not exists public.${safeSupabaseTableName} (
   id text primary key,
@@ -178,42 +170,27 @@ create index if not exists ${safeSupabaseTableName}_updated_at_idx
 create index if not exists ${safeSupabaseTableName}_data_gin_idx
   on public.${safeSupabaseTableName} using gin (data);
 
-alter table public.${safeSupabaseTableName} disable row level security;`;
+alter table public.${safeSupabaseTableName} enable row level security;
 
-  useEffect(() => {
-    setSupabaseFormUrl(supabaseUrl);
-  }, [supabaseUrl]);
+drop policy if exists "${safeSupabaseTableName}_authenticated_read" on public.${safeSupabaseTableName};
+create policy "${safeSupabaseTableName}_authenticated_read"
+  on public.${safeSupabaseTableName}
+  for select
+  to authenticated
+  using (true);
 
-  useEffect(() => {
-    setSupabaseFormAnonKey(supabaseAnonKey);
-  }, [supabaseAnonKey]);
-
-  useEffect(() => {
-    setSupabaseFormTableName(supabaseTableName);
-  }, [supabaseTableName]);
-
-  useEffect(() => {
-    setSupabaseFormRowId(supabaseRowId);
-  }, [supabaseRowId]);
+drop policy if exists "${safeSupabaseTableName}_authenticated_write" on public.${safeSupabaseTableName};
+create policy "${safeSupabaseTableName}_authenticated_write"
+  on public.${safeSupabaseTableName}
+  for all
+  to authenticated
+  using (true)
+  with check (true);`;
 
   const handleCopySql = () => {
     navigator.clipboard.writeText(sqlCode);
     setCopiedSql(true);
     setTimeout(() => setCopiedSql(false), 2000);
-  };
-
-  const handleSaveSupabaseSettings = (e: React.FormEvent) => {
-    e.preventDefault();
-    const nextTableName = supabaseFormTableName.trim() || 'buddy_erp_backoffice';
-    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(nextTableName)) {
-      alert('ชื่อตาราง Supabase ใช้ได้เฉพาะ a-z, A-Z, 0-9 และ _ และต้องไม่ขึ้นต้นด้วยตัวเลข');
-      return;
-    }
-    setSupabaseUrl(supabaseFormUrl.trim());
-    setSupabaseAnonKey(supabaseFormAnonKey.trim());
-    setSupabaseTableName(nextTableName);
-    setSupabaseRowId(supabaseFormRowId.trim() || 'default');
-    alert('บันทึกค่า Supabase แล้ว ระบบจะทดสอบการเชื่อมต่อใหม่อัตโนมัติ');
   };
 
   const handlePushSupabase = async () => {
@@ -463,52 +440,32 @@ alter table public.${safeSupabaseTableName} disable row level security;`;
                   </div>
                 )}
 
-                <form onSubmit={handleSaveSupabaseSettings} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase">Supabase Project URL</label>
-                    <input
-                      type="url"
-                      value={supabaseFormUrl}
-                      onChange={(e) => setSupabaseFormUrl(e.target.value)}
-                      placeholder="https://your-project.supabase.co"
-                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:border-emerald-500 font-mono"
-                    />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Supabase Project</p>
+                    <p className="text-xs text-slate-700 font-mono truncate mt-1" title={supabaseUrl || 'ยังไม่ได้ตั้งค่า VITE_SUPABASE_URL'}>
+                      {supabaseUrl || 'ยังไม่ได้ตั้งค่า VITE_SUPABASE_URL'}
+                    </p>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase">Anon Public API Key</label>
-                    <input
-                      type="password"
-                      value={supabaseFormAnonKey}
-                      onChange={(e) => setSupabaseFormAnonKey(e.target.value)}
-                      placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
-                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:border-emerald-500 font-mono"
-                    />
+                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Anon Key</p>
+                    <p className={`text-xs font-semibold mt-1 ${supabaseAnonKey ? 'text-emerald-700' : 'text-rose-600'}`}>
+                      {supabaseAnonKey ? 'โหลดจาก .env.local แล้ว' : 'ยังไม่ได้ตั้งค่า VITE_SUPABASE_ANON_KEY'}
+                    </p>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase">Supabase Table Name</label>
-                    <input
-                      type="text"
-                      value={supabaseFormTableName}
-                      onChange={(e) => setSupabaseFormTableName(e.target.value)}
-                      placeholder="buddy_erp_backoffice"
-                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:border-emerald-500 font-mono"
-                    />
+                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Supabase Table</p>
+                    <p className="text-xs text-slate-700 font-mono truncate mt-1">{supabaseTableName}</p>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase">Sync Row ID</label>
-                    <input
-                      type="text"
-                      value={supabaseFormRowId}
-                      onChange={(e) => setSupabaseFormRowId(e.target.value)}
-                      placeholder="default"
-                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:border-emerald-500 font-mono"
-                    />
+                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Sync Row ID</p>
+                    <p className="text-xs text-slate-700 font-mono truncate mt-1">{supabaseRowId}</p>
                   </div>
 
-                  <div className="flex items-end justify-between gap-3">
+                  <div className="md:col-span-2 flex items-center justify-between gap-3">
                     <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer pb-2.5">
                       <input
                         type="checkbox"
@@ -518,15 +475,8 @@ alter table public.${safeSupabaseTableName} disable row level security;`;
                       />
                       Auto sync เมื่อข้อมูลเปลี่ยน
                     </label>
-                    <button
-                      type="submit"
-                      className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <Check className="w-4 h-4" />
-                      บันทึกค่า
-                    </button>
                   </div>
-                </form>
+                </div>
 
                 <div className="flex flex-col lg:flex-row gap-3 justify-between border-t border-slate-100 pt-4">
                   <div className="flex flex-col sm:flex-row gap-2">
@@ -603,11 +553,7 @@ alter table public.${safeSupabaseTableName} disable row level security;`;
         status={supabaseStatus}
         errorMsg={supabaseErrorMsg}
         url={supabaseUrl}
-        setUrl={setSupabaseUrl}
-        anonKey={supabaseAnonKey}
-        setAnonKey={setSupabaseAnonKey}
         tableName={supabaseTableName}
-        setTableName={setSupabaseTableName}
         onLoginSuccess={markAuthenticated}
       />
     );
