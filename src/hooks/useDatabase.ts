@@ -22,12 +22,13 @@ import {
 } from '../types';
 import { INITIAL_DATABASE } from '../initialData';
 
-const LOCAL_STORAGE_KEY = 'campchair_backoffice_db';
+const LOCAL_STORAGE_KEY = 'buddy_erp_local_db';
+const LEGACY_LOCAL_STORAGE_KEY = 'campchair_backoffice_db';
 
 export function useDatabase() {
   const [db, setDb] = useState<AppDatabase>(() => {
     try {
-      const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+      const stored = localStorage.getItem(LOCAL_STORAGE_KEY) || localStorage.getItem(LEGACY_LOCAL_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored) as AppDatabase;
         // Basic schema verification

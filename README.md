@@ -1,6 +1,6 @@
 # Buddy ERP
 
-React + Vite backoffice for Buddy Camping inventory, orders, deliveries, reports, and Supabase cloud sync.
+React + Vite backoffice for Buddy Camping inventory, orders, deliveries, reports, and Supabase cloud sync with real relational tables.
 
 ## Local Development
 
@@ -23,7 +23,7 @@ React + Vite backoffice for Buddy Camping inventory, orders, deliveries, reports
 1. Create or open your Supabase project.
 2. Create admin users in Supabase Auth.
 3. In the app, open `ตั้งค่า / สำรองข้อมูล`.
-4. Copy the SQL shown in the Supabase panel and run it in Supabase SQL Editor.
+4. Copy the SQL shown in the Supabase panel and run it in Supabase SQL Editor. It creates/repairs the real tables: `brands`, `models`, `variants`, `purchase_batches`, `purchase_batch_items`, `stock_items`, `customers`, `orders`, `order_items`, and `deliveries`.
 5. Return to the app and press `อัปโหลดขึ้นคลาวด์`.
 
 The Vercel frontend uses the public Supabase anon key. Data access is protected by Supabase Auth and RLS policies, so do not disable RLS in production.

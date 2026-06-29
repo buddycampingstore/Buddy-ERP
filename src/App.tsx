@@ -73,8 +73,6 @@ export default function App() {
     setUrl: setSupabaseUrl,
     anonKey: supabaseAnonKey,
     setAnonKey: setSupabaseAnonKey,
-    rowId: supabaseRowId,
-    setRowId: setSupabaseRowId,
     autoSync: supabaseAutoSync,
     setAutoSync: setSupabaseAutoSync,
     status: supabaseStatus,
@@ -84,6 +82,7 @@ export default function App() {
     isPulling: supabaseIsPulling,
     isTableReady: supabaseIsTableReady,
     hasBootstrapped: supabaseHasBootstrapped,
+    sessionUserId: supabaseSessionUserId,
     pushToSupabase,
     pullFromSupabase,
     client: supabaseClient
@@ -163,40 +162,223 @@ export default function App() {
   // --- BACKUP PANEL STATE ---
   const [backupInput, setBackupInput] = useState('');
   const [copiedSql, setCopiedSql] = useState(false);
-  const sqlCode = `create table if not exists campchair_backoffice (
-  id text primary key,
-  data jsonb not null,
-  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+  const sqlCode = `-- Buddy ERP real relational database schema for Vercel + Supabase
+-- Run this in Supabase SQL Editor. It is safe to run again after edits.
+
+create table if not exists brands (
+  user_id uuid not null default auth.uid(),
+  id text not null,
+  name text not null
 );
 
--- เปิด RLS สำหรับใช้งานจริงบน Vercel: anon key เป็น public แต่ต้อง login ก่อนอ่าน/เขียน
-alter table campchair_backoffice enable row level security;
+create table if not exists models (
+  user_id uuid not null default auth.uid(),
+  id text not null,
+  brand_id text not null,
+  name text not null,
+  image text
+);
 
-drop policy if exists "campchair_authenticated_select" on campchair_backoffice;
-drop policy if exists "campchair_authenticated_insert" on campchair_backoffice;
-drop policy if exists "campchair_authenticated_update" on campchair_backoffice;
-drop policy if exists "campchair_authenticated_delete" on campchair_backoffice;
+create table if not exists variants (
+  user_id uuid not null default auth.uid(),
+  id text not null,
+  model_id text not null,
+  color text not null,
+  qty_in_stock integer not null default 0,
+  current_wac numeric not null default 0,
+  standard_sale_price numeric not null default 0
+);
 
-create policy "campchair_authenticated_select"
-on campchair_backoffice for select
-to authenticated
-using (true);
+create table if not exists customers (
+  user_id uuid not null default auth.uid(),
+  id text not null,
+  name text not null,
+  phone text not null default '',
+  facebook text not null default '',
+  note text not null default ''
+);
 
-create policy "campchair_authenticated_insert"
-on campchair_backoffice for insert
-to authenticated
-with check (true);
+create table if not exists purchase_batches (
+  user_id uuid not null default auth.uid(),
+  id text not null,
+  date date not null,
+  shipping_cost numeric not null default 0,
+  other_cost numeric not null default 0,
+  note text
+);
 
-create policy "campchair_authenticated_update"
-on campchair_backoffice for update
-to authenticated
-using (true)
-with check (true);
+create table if not exists purchase_batch_items (
+  user_id uuid not null default auth.uid(),
+  id text not null,
+  batch_id text not null,
+  line_index integer not null default 0,
+  variant_id text not null,
+  qty integer not null default 0,
+  unit_price numeric not null default 0
+);
 
-create policy "campchair_authenticated_delete"
-on campchair_backoffice for delete
-to authenticated
-using (true);`;
+create table if not exists orders (
+  user_id uuid not null default auth.uid(),
+  id text not null,
+  customer_id text not null default 'general',
+  date date not null,
+  channel text not null default 'other',
+  status text not null default 'pending',
+  delivery_type text not null default 'shipping',
+  discount numeric not null default 0,
+  shipping_fee numeric not null default 0,
+  shipping_cost numeric not null default 0
+);
+
+create table if not exists order_items (
+  user_id uuid not null default auth.uid(),
+  id text not null,
+  order_id text not null,
+  stock_item_id text not null,
+  variant_id text not null,
+  sale_price numeric not null default 0,
+  discount numeric not null default 0,
+  final_price numeric not null default 0,
+  wac_at_sale numeric not null default 0,
+  profit numeric not null default 0
+);
+
+create table if not exists deliveries (
+  user_id uuid not null default auth.uid(),
+  id text not null,
+  order_id text not null,
+  tracking text not null default '',
+  pickup_datetime text not null default '',
+  status text not null default 'pending'
+);
+
+create table if not exists stock_items (
+  user_id uuid not null default auth.uid(),
+  id text not null,
+  variant_id text not null,
+  wac_cost numeric not null default 0,
+  status text not null default 'in_stock',
+  order_id text,
+  batch_id text not null
+);
+
+-- Add/repair columns on existing tables that were created manually.
+alter table brands add column if not exists user_id uuid;
+alter table brands add column if not exists id text;
+alter table brands add column if not exists name text;
+
+alter table models add column if not exists user_id uuid;
+alter table models add column if not exists id text;
+alter table models add column if not exists brand_id text;
+alter table models add column if not exists name text;
+alter table models add column if not exists image text;
+
+alter table variants add column if not exists user_id uuid;
+alter table variants add column if not exists id text;
+alter table variants add column if not exists model_id text;
+alter table variants add column if not exists color text;
+alter table variants add column if not exists qty_in_stock integer default 0;
+alter table variants add column if not exists current_wac numeric default 0;
+alter table variants add column if not exists standard_sale_price numeric default 0;
+
+alter table customers add column if not exists user_id uuid;
+alter table customers add column if not exists id text;
+alter table customers add column if not exists name text;
+alter table customers add column if not exists phone text default '';
+alter table customers add column if not exists facebook text default '';
+alter table customers add column if not exists note text default '';
+
+alter table purchase_batches add column if not exists user_id uuid;
+alter table purchase_batches add column if not exists id text;
+alter table purchase_batches add column if not exists date date;
+alter table purchase_batches add column if not exists shipping_cost numeric default 0;
+alter table purchase_batches add column if not exists other_cost numeric default 0;
+alter table purchase_batches add column if not exists note text;
+
+alter table purchase_batch_items add column if not exists user_id uuid;
+alter table purchase_batch_items add column if not exists id text;
+alter table purchase_batch_items add column if not exists batch_id text;
+alter table purchase_batch_items add column if not exists line_index integer default 0;
+alter table purchase_batch_items add column if not exists variant_id text;
+alter table purchase_batch_items add column if not exists qty integer default 0;
+alter table purchase_batch_items add column if not exists unit_price numeric default 0;
+
+alter table orders add column if not exists user_id uuid;
+alter table orders add column if not exists id text;
+alter table orders add column if not exists customer_id text default 'general';
+alter table orders add column if not exists date date;
+alter table orders add column if not exists channel text default 'other';
+alter table orders add column if not exists status text default 'pending';
+alter table orders add column if not exists delivery_type text default 'shipping';
+alter table orders add column if not exists discount numeric default 0;
+alter table orders add column if not exists shipping_fee numeric default 0;
+alter table orders add column if not exists shipping_cost numeric default 0;
+
+alter table order_items add column if not exists user_id uuid;
+alter table order_items add column if not exists id text;
+alter table order_items add column if not exists order_id text;
+alter table order_items add column if not exists stock_item_id text;
+alter table order_items add column if not exists variant_id text;
+alter table order_items add column if not exists sale_price numeric default 0;
+alter table order_items add column if not exists discount numeric default 0;
+alter table order_items add column if not exists final_price numeric default 0;
+alter table order_items add column if not exists wac_at_sale numeric default 0;
+alter table order_items add column if not exists profit numeric default 0;
+
+alter table deliveries add column if not exists user_id uuid;
+alter table deliveries add column if not exists id text;
+alter table deliveries add column if not exists order_id text;
+alter table deliveries add column if not exists tracking text default '';
+alter table deliveries add column if not exists pickup_datetime text default '';
+alter table deliveries add column if not exists status text default 'pending';
+
+alter table stock_items add column if not exists user_id uuid;
+alter table stock_items add column if not exists id text;
+alter table stock_items add column if not exists variant_id text;
+alter table stock_items add column if not exists wac_cost numeric default 0;
+alter table stock_items add column if not exists status text default 'in_stock';
+alter table stock_items add column if not exists order_id text;
+alter table stock_items add column if not exists batch_id text;
+
+do $$
+declare
+  table_name text;
+  first_user uuid;
+begin
+  select id into first_user from auth.users order by created_at asc limit 1;
+
+  foreach table_name in array array[
+    'brands',
+    'models',
+    'variants',
+    'customers',
+    'purchase_batches',
+    'purchase_batch_items',
+    'orders',
+    'order_items',
+    'deliveries',
+    'stock_items'
+  ]
+  loop
+    execute format('alter table %I alter column user_id set default auth.uid()', table_name);
+
+    if first_user is not null then
+      execute format('update %I set user_id = $1 where user_id is null', table_name) using first_user;
+    end if;
+
+    execute format('alter table %I enable row level security', table_name);
+
+    execute format('drop policy if exists select_own on %I', table_name);
+    execute format('drop policy if exists insert_own on %I', table_name);
+    execute format('drop policy if exists update_own on %I', table_name);
+    execute format('drop policy if exists delete_own on %I', table_name);
+
+    execute format('create policy select_own on %I for select to authenticated using (auth.uid() = user_id)', table_name);
+    execute format('create policy insert_own on %I for insert to authenticated with check (auth.uid() = user_id)', table_name);
+    execute format('create policy update_own on %I for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id)', table_name);
+    execute format('create policy delete_own on %I for delete to authenticated using (auth.uid() = user_id)', table_name);
+  end loop;
+end $$;`;
 
   const handleCopySql = () => {
     navigator.clipboard.writeText(sqlCode);
@@ -470,14 +652,13 @@ using (true);`;
 
                     <div className="grid grid-cols-2 gap-3.5">
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">คีย์/ไอดีร้านค้า (Row ID)</label>
-                        <input
-                          type="text"
-                          placeholder="default"
-                          value={supabaseRowId}
-                          onChange={(e) => setSupabaseRowId(e.target.value)}
-                          className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:border-emerald-700 font-mono"
-                        />
+                        <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">ขอบเขตข้อมูล</label>
+                        <div className="text-[10px] leading-relaxed p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-500">
+                          ใช้ตารางจริงแยกตามผู้ใช้ Supabase Auth
+                          {supabaseSessionUserId && (
+                            <span className="block mt-1 font-mono text-slate-400 truncate">{supabaseSessionUserId}</span>
+                          )}
+                        </div>
                       </div>
 
                       <div className="flex flex-col justify-end">
@@ -578,7 +759,7 @@ using (true);`;
                         </button>
                       </div>
                       <p className="text-slate-500 text-[11px] leading-relaxed">
-                        ใช้งานครั้งแรกให้นำ SQL นี้ไปรันใน <strong>SQL Editor</strong> ของ <strong>Supabase Dashboard</strong> ก่อน จากนั้นกลับมากด <strong>อัปโหลดขึ้นคลาวด์</strong> ระบบจะสร้างแถวข้อมูลของร้านตาม Row ID ให้ทันที:
+                        ใช้งานครั้งแรกให้นำ SQL นี้ไปรันใน <strong>SQL Editor</strong> ของ <strong>Supabase Dashboard</strong> ก่อน จากนั้นกลับมากด <strong>อัปโหลดขึ้นคลาวด์</strong> ระบบจะบันทึกข้อมูลลงตารางจริง เช่น brands, models, variants, orders และ stock_items:
                       </p>
                     </div>
 
@@ -589,7 +770,7 @@ using (true);`;
                     </div>
 
                     <div className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-100 p-2.5 rounded-xl">
-                      <strong>สถานะการเก็บข้อมูล:</strong> แอปจะเก็บข้อมูลลงเครื่องก่อนเสมอ และจะส่งขึ้น Supabase เมื่อสถานะเป็น “พร้อมเก็บข้อมูล” หรือเมื่อกด “อัปโหลดขึ้นคลาวด์”
+                      <strong>สถานะการเก็บข้อมูล:</strong> แอปจะเก็บข้อมูลลงเครื่องก่อนเสมอ และจะ sync ไปยังตารางจริงบน Supabase เมื่อสถานะเป็น “พร้อมเก็บข้อมูล” หรือเมื่อกด “อัปโหลดขึ้นคลาวด์”
                     </div>
                   </div>
                 </div>
