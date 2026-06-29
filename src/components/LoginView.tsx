@@ -301,20 +301,12 @@ export function LoginView({
             </div>
           </form>
 
-          {/* Bottom utility: configuration button */}
+          {/* Bottom utility: configuration status */}
           <div className="pt-3 border-t border-slate-900/80 flex items-center justify-between text-[11px] text-slate-400">
             <span className="flex items-center gap-1">
               <span className={`w-1.5 h-1.5 rounded-full ${status === 'connected' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
               สถานะ: {status === 'connected' ? 'พร้อมซิงค์ออนไลน์' : 'เซิร์ฟเวอร์ไม่ได้เชื่อมต่อ'}
             </span>
-            <button
-              type="button"
-              onClick={() => setShowConnectionConfig(!showConnectionConfig)}
-              className="text-emerald-500 hover:text-emerald-400 font-extrabold flex items-center gap-1 cursor-pointer"
-            >
-              <Settings className="w-3.5 h-3.5" />
-              {showConnectionConfig ? 'ปิดตั้งค่าคลาวด์' : 'ตั้งค่าคลาวด์ Supabase'}
-            </button>
           </div>
         </motion.div>
 

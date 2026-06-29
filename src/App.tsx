@@ -73,6 +73,8 @@ export default function App() {
     setUrl: setSupabaseUrl,
     anonKey: supabaseAnonKey,
     setAnonKey: setSupabaseAnonKey,
+    rowId: supabaseRowId,
+    setRowId: setSupabaseRowId,
     autoSync: supabaseAutoSync,
     setAutoSync: setSupabaseAutoSync,
     status: supabaseStatus,
@@ -80,9 +82,6 @@ export default function App() {
     lastSynced: supabaseLastSynced,
     isPushing: supabaseIsPushing,
     isPulling: supabaseIsPulling,
-    isTableReady: supabaseIsTableReady,
-    hasBootstrapped: supabaseHasBootstrapped,
-    sessionUserId: supabaseSessionUserId,
     pushToSupabase,
     pullFromSupabase,
     client: supabaseClient
@@ -162,223 +161,14 @@ export default function App() {
   // --- BACKUP PANEL STATE ---
   const [backupInput, setBackupInput] = useState('');
   const [copiedSql, setCopiedSql] = useState(false);
-  const sqlCode = `-- Buddy ERP real relational database schema for Vercel + Supabase
--- Run this in Supabase SQL Editor. It is safe to run again after edits.
-
-create table if not exists brands (
-  user_id uuid not null default auth.uid(),
-  id text not null,
-  name text not null
+  const sqlCode = `create table if not exists campchair_backoffice (
+  id text primary key,
+  data jsonb not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-create table if not exists models (
-  user_id uuid not null default auth.uid(),
-  id text not null,
-  brand_id text not null,
-  name text not null,
-  image text
-);
-
-create table if not exists variants (
-  user_id uuid not null default auth.uid(),
-  id text not null,
-  model_id text not null,
-  color text not null,
-  qty_in_stock integer not null default 0,
-  current_wac numeric not null default 0,
-  standard_sale_price numeric not null default 0
-);
-
-create table if not exists customers (
-  user_id uuid not null default auth.uid(),
-  id text not null,
-  name text not null,
-  phone text not null default '',
-  facebook text not null default '',
-  note text not null default ''
-);
-
-create table if not exists purchase_batches (
-  user_id uuid not null default auth.uid(),
-  id text not null,
-  date date not null,
-  shipping_cost numeric not null default 0,
-  other_cost numeric not null default 0,
-  note text
-);
-
-create table if not exists purchase_batch_items (
-  user_id uuid not null default auth.uid(),
-  id text not null,
-  batch_id text not null,
-  line_index integer not null default 0,
-  variant_id text not null,
-  qty integer not null default 0,
-  unit_price numeric not null default 0
-);
-
-create table if not exists orders (
-  user_id uuid not null default auth.uid(),
-  id text not null,
-  customer_id text not null default 'general',
-  date date not null,
-  channel text not null default 'other',
-  status text not null default 'pending',
-  delivery_type text not null default 'shipping',
-  discount numeric not null default 0,
-  shipping_fee numeric not null default 0,
-  shipping_cost numeric not null default 0
-);
-
-create table if not exists order_items (
-  user_id uuid not null default auth.uid(),
-  id text not null,
-  order_id text not null,
-  stock_item_id text not null,
-  variant_id text not null,
-  sale_price numeric not null default 0,
-  discount numeric not null default 0,
-  final_price numeric not null default 0,
-  wac_at_sale numeric not null default 0,
-  profit numeric not null default 0
-);
-
-create table if not exists deliveries (
-  user_id uuid not null default auth.uid(),
-  id text not null,
-  order_id text not null,
-  tracking text not null default '',
-  pickup_datetime text not null default '',
-  status text not null default 'pending'
-);
-
-create table if not exists stock_items (
-  user_id uuid not null default auth.uid(),
-  id text not null,
-  variant_id text not null,
-  wac_cost numeric not null default 0,
-  status text not null default 'in_stock',
-  order_id text,
-  batch_id text not null
-);
-
--- Add/repair columns on existing tables that were created manually.
-alter table brands add column if not exists user_id uuid;
-alter table brands add column if not exists id text;
-alter table brands add column if not exists name text;
-
-alter table models add column if not exists user_id uuid;
-alter table models add column if not exists id text;
-alter table models add column if not exists brand_id text;
-alter table models add column if not exists name text;
-alter table models add column if not exists image text;
-
-alter table variants add column if not exists user_id uuid;
-alter table variants add column if not exists id text;
-alter table variants add column if not exists model_id text;
-alter table variants add column if not exists color text;
-alter table variants add column if not exists qty_in_stock integer default 0;
-alter table variants add column if not exists current_wac numeric default 0;
-alter table variants add column if not exists standard_sale_price numeric default 0;
-
-alter table customers add column if not exists user_id uuid;
-alter table customers add column if not exists id text;
-alter table customers add column if not exists name text;
-alter table customers add column if not exists phone text default '';
-alter table customers add column if not exists facebook text default '';
-alter table customers add column if not exists note text default '';
-
-alter table purchase_batches add column if not exists user_id uuid;
-alter table purchase_batches add column if not exists id text;
-alter table purchase_batches add column if not exists date date;
-alter table purchase_batches add column if not exists shipping_cost numeric default 0;
-alter table purchase_batches add column if not exists other_cost numeric default 0;
-alter table purchase_batches add column if not exists note text;
-
-alter table purchase_batch_items add column if not exists user_id uuid;
-alter table purchase_batch_items add column if not exists id text;
-alter table purchase_batch_items add column if not exists batch_id text;
-alter table purchase_batch_items add column if not exists line_index integer default 0;
-alter table purchase_batch_items add column if not exists variant_id text;
-alter table purchase_batch_items add column if not exists qty integer default 0;
-alter table purchase_batch_items add column if not exists unit_price numeric default 0;
-
-alter table orders add column if not exists user_id uuid;
-alter table orders add column if not exists id text;
-alter table orders add column if not exists customer_id text default 'general';
-alter table orders add column if not exists date date;
-alter table orders add column if not exists channel text default 'other';
-alter table orders add column if not exists status text default 'pending';
-alter table orders add column if not exists delivery_type text default 'shipping';
-alter table orders add column if not exists discount numeric default 0;
-alter table orders add column if not exists shipping_fee numeric default 0;
-alter table orders add column if not exists shipping_cost numeric default 0;
-
-alter table order_items add column if not exists user_id uuid;
-alter table order_items add column if not exists id text;
-alter table order_items add column if not exists order_id text;
-alter table order_items add column if not exists stock_item_id text;
-alter table order_items add column if not exists variant_id text;
-alter table order_items add column if not exists sale_price numeric default 0;
-alter table order_items add column if not exists discount numeric default 0;
-alter table order_items add column if not exists final_price numeric default 0;
-alter table order_items add column if not exists wac_at_sale numeric default 0;
-alter table order_items add column if not exists profit numeric default 0;
-
-alter table deliveries add column if not exists user_id uuid;
-alter table deliveries add column if not exists id text;
-alter table deliveries add column if not exists order_id text;
-alter table deliveries add column if not exists tracking text default '';
-alter table deliveries add column if not exists pickup_datetime text default '';
-alter table deliveries add column if not exists status text default 'pending';
-
-alter table stock_items add column if not exists user_id uuid;
-alter table stock_items add column if not exists id text;
-alter table stock_items add column if not exists variant_id text;
-alter table stock_items add column if not exists wac_cost numeric default 0;
-alter table stock_items add column if not exists status text default 'in_stock';
-alter table stock_items add column if not exists order_id text;
-alter table stock_items add column if not exists batch_id text;
-
-do $$
-declare
-  table_name text;
-  first_user uuid;
-begin
-  select id into first_user from auth.users order by created_at asc limit 1;
-
-  foreach table_name in array array[
-    'brands',
-    'models',
-    'variants',
-    'customers',
-    'purchase_batches',
-    'purchase_batch_items',
-    'orders',
-    'order_items',
-    'deliveries',
-    'stock_items'
-  ]
-  loop
-    execute format('alter table %I alter column user_id set default auth.uid()', table_name);
-
-    if first_user is not null then
-      execute format('update %I set user_id = $1 where user_id is null', table_name) using first_user;
-    end if;
-
-    execute format('alter table %I enable row level security', table_name);
-
-    execute format('drop policy if exists select_own on %I', table_name);
-    execute format('drop policy if exists insert_own on %I', table_name);
-    execute format('drop policy if exists update_own on %I', table_name);
-    execute format('drop policy if exists delete_own on %I', table_name);
-
-    execute format('create policy select_own on %I for select to authenticated using (auth.uid() = user_id)', table_name);
-    execute format('create policy insert_own on %I for insert to authenticated with check (auth.uid() = user_id)', table_name);
-    execute format('create policy update_own on %I for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id)', table_name);
-    execute format('create policy delete_own on %I for delete to authenticated using (auth.uid() = user_id)', table_name);
-  end loop;
-end $$;`;
+-- ปิดใช้งาน RLS เพื่อให้สิทธิ์ Anon Key สามารถเขียน-อ่านได้ง่าย
+alter table campchair_backoffice disable row level security;`;
 
   const handleCopySql = () => {
     navigator.clipboard.writeText(sqlCode);
@@ -574,265 +364,6 @@ end $$;`;
                 </form>
               </div>
 
-              {/* --- SUPABASE INTEGRATION PANEL --- */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-5 md:col-span-2" id="supabase-panel">
-                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 border-b border-slate-100 pb-3">
-                  <div className="flex items-center gap-2.5">
-                    <Database className="w-5 h-5 text-emerald-600" />
-                    <div>
-                      <h3 className="font-bold text-slate-800 text-sm">การเชื่อมต่อและซิงค์ข้อมูล Supabase Cloud</h3>
-                      <p className="text-slate-400 text-[10px] mt-0.5">เชื่อมโยงสต็อกและออเดอร์กับฐานข้อมูลออนไลน์ของร้านเพื่อความปลอดภัยและการซิงค์ข้ามเครื่อง</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {/* Connection Status Badge */}
-                    {supabaseStatus === 'disconnected' && (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                        ไม่ได้เชื่อมต่อ
-                      </span>
-                    )}
-                    {supabaseStatus === 'connecting' && (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-55 text-amber-600 border border-amber-200 bg-amber-50">
-                        <RefreshCw className="w-3 h-3 animate-spin text-amber-500" />
-                        กำลังเชื่อมต่อ...
-                      </span>
-                    )}
-                    {supabaseStatus === 'connected' && supabaseIsTableReady && (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                        พร้อมเก็บข้อมูล
-                      </span>
-                    )}
-                    {supabaseStatus === 'connected' && !supabaseIsTableReady && (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                        ต้องสร้างตาราง
-                      </span>
-                    )}
-                    {supabaseStatus === 'error' && (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200">
-                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                        เกิดข้อผิดพลาด
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {supabaseErrorMsg && (
-                  <div className="p-3 bg-rose-50/70 border border-rose-200 rounded-xl text-rose-700 text-xs">
-                    ⚠️ {supabaseErrorMsg}
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
-                  {/* Left Column: Form Settings */}
-                  <div className="md:col-span-5 space-y-3.5">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Supabase URL</label>
-                      <input
-                        type="url"
-                        placeholder="https://your-project-id.supabase.co"
-                        value={supabaseUrl}
-                        onChange={(e) => setSupabaseUrl(e.target.value)}
-                        className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:border-emerald-700"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Supabase Anon Key (API Key)</label>
-                      <input
-                        type="password"
-                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                        value={supabaseAnonKey}
-                        onChange={(e) => setSupabaseAnonKey(e.target.value)}
-                        className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:border-emerald-700"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3.5">
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">ขอบเขตข้อมูล</label>
-                        <div className="text-[10px] leading-relaxed p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-500">
-                          ใช้ตารางจริงแยกตามผู้ใช้ Supabase Auth
-                          {supabaseSessionUserId && (
-                            <span className="block mt-1 font-mono text-slate-400 truncate">{supabaseSessionUserId}</span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col justify-end">
-                        <label className="flex items-center gap-2 text-xs text-slate-600 select-none pb-2.5 font-bold cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={supabaseAutoSync}
-                            onChange={(e) => setSupabaseAutoSync(e.target.checked)}
-                            className="h-4 w-4 accent-emerald-700 cursor-pointer"
-                          />
-                          <span>{supabaseAutoSync ? 'ซิงค์อัตโนมัติเปิดอยู่' : 'ซิงค์อัตโนมัติปิดอยู่'}</span>
-                        </label>
-                      </div>
-                    </div>
-
-                    {supabaseStatus === 'connected' && (
-                      <div className={`text-[10px] rounded-xl border p-2.5 leading-relaxed ${
-                        supabaseIsTableReady
-                          ? 'bg-emerald-50 text-emerald-800 border-emerald-100'
-                          : 'bg-amber-50 text-amber-800 border-amber-200'
-                      }`}>
-                        {supabaseIsTableReady
-                          ? (supabaseHasBootstrapped
-                              ? 'เชื่อมต่อพร้อมใช้งานแล้ว ข้อมูลจะถูกเก็บใน Supabase อัตโนมัติเมื่อมีการเปลี่ยนแปลง'
-                              : 'ตารางพร้อมแล้ว ระบบกำลังเตรียมซิงค์ข้อมูลเริ่มต้นกับ Supabase')
-                          : 'เชื่อมต่อโปรเจกต์ได้แล้ว แต่ยังไม่พบตารางเก็บข้อมูล กรุณารัน SQL ด้านขวาก่อน แล้วกดอัปโหลดขึ้นคลาวด์'}
-                      </div>
-                    )}
-
-                    {supabaseStatus === 'connected' && (
-                      <div className="pt-2 flex flex-wrap gap-2.5">
-                        <button
-                          onClick={async () => {
-                            const res = await pushToSupabase();
-                            if (res.success) {
-                              alert('อัปโหลดข้อมูลสต็อกและออเดอร์ไปยัง Supabase เรียบร้อยแล้ว!');
-                            } else {
-                              alert(`อัปโหลดล้มเหลว: ${res.error}`);
-                            }
-                          }}
-                          disabled={supabaseIsPushing || supabaseIsPulling}
-                          className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2 px-3 rounded-xl transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-xs"
-                        >
-                          <CloudUpload className="w-4 h-4" />
-                          {supabaseIsPushing ? 'กำลังส่งข้อมูล...' : 'อัปโหลดขึ้นคลาวด์'}
-                        </button>
-
-                        <button
-                          onClick={async () => {
-                            if (window.confirm('⚠️ คำเตือน! การดาวน์โหลดข้อมูลจะเขียนทับคลังปัจจุบันในเครื่องทันที ต้องการดำเนินการต่อหรือไม่?')) {
-                              const res = await pullFromSupabase();
-                              if (res.success) {
-                                alert('ดึงข้อมูลกู้คืนจาก Supabase สำเร็จ สต็อกเป็นข้อมูลล่าสุดเรียบร้อย!');
-                              } else {
-                                alert(`ดาวน์โหลดล้มเหลว: ${res.error}`);
-                              }
-                            }
-                          }}
-                          disabled={supabaseIsPushing || supabaseIsPulling}
-                          className="flex-1 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold py-2 px-3 rounded-xl transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-xs"
-                        >
-                          <CloudDownload className="w-4 h-4" />
-                          {supabaseIsPulling ? 'กำลังดึงข้อมูล...' : 'ดาวน์โหลดกู้คืน'}
-                        </button>
-                      </div>
-                    )}
-
-                    {supabaseLastSynced && (
-                      <p className="text-[10px] text-slate-400 font-mono text-center">
-                        ซิงค์ล่าสุดเวลา: {supabaseLastSynced}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Right Column: SQL setup instruction block */}
-                  <div className="md:col-span-7 bg-slate-50 p-4 rounded-2xl border border-slate-200/60 flex flex-col justify-between space-y-3">
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <h4 className="font-bold text-slate-700 text-xs uppercase tracking-tight">ขั้นตอนการสร้างตารางบน Supabase</h4>
-                        <button
-                          onClick={handleCopySql}
-                          type="button"
-                          className={`text-[10px] font-bold py-1 px-2.5 rounded-lg border flex items-center gap-1 cursor-pointer transition-all ${
-                            copiedSql 
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                              : 'bg-white text-slate-600 hover:text-slate-800 border-slate-200'
-                          }`}
-                        >
-                          {copiedSql ? (
-                            <>
-                              <Check className="w-3.5 h-3.5" /> คัดลอกสำเร็จ!
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3.5 h-3.5" /> คัดลอก SQL
-                            </>
-                          )}
-                        </button>
-                      </div>
-                      <p className="text-slate-500 text-[11px] leading-relaxed">
-                        ใช้งานครั้งแรกให้นำ SQL นี้ไปรันใน <strong>SQL Editor</strong> ของ <strong>Supabase Dashboard</strong> ก่อน จากนั้นกลับมากด <strong>อัปโหลดขึ้นคลาวด์</strong> ระบบจะบันทึกข้อมูลลงตารางจริง เช่น brands, models, variants, orders และ stock_items:
-                      </p>
-                    </div>
-
-                    <div className="relative">
-                      <pre className="text-[9.5px] font-mono p-3 bg-slate-900 text-slate-300 rounded-xl overflow-x-auto select-all max-h-[140px] leading-relaxed">
-                        {sqlCode}
-                      </pre>
-                    </div>
-
-                    <div className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-100 p-2.5 rounded-xl">
-                      <strong>สถานะการเก็บข้อมูล:</strong> แอปจะเก็บข้อมูลลงเครื่องก่อนเสมอ และจะ sync ไปยังตารางจริงบน Supabase เมื่อสถานะเป็น “พร้อมเก็บข้อมูล” หรือเมื่อกด “อัปโหลดขึ้นคลาวด์”
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* --- LOGIN CREDENTIALS SETTINGS --- */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4 md:col-span-2" id="login-creds-panel">
-                <div className="border-b border-slate-100 pb-3">
-                  <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
-                    <Key className="w-5 h-5 text-emerald-600" />
-                    ตั้งค่าชื่อผู้ใช้งานและรหัสผ่านเข้าสู่ระบบ (ERP Password Settings)
-                  </h3>
-                  <p className="text-slate-400 text-[10px] mt-0.5">เปลี่ยนข้อมูลชื่อผู้ใช้และรหัสผ่านแอดมินสำหรับการล็อกอินเข้าใช้งานในเครื่องนี้</p>
-                </div>
-
-                <form onSubmit={handleSaveCredentials} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">ชื่อผู้ใช้งานใหม่ (New Username)</label>
-                    <input
-                      type="text"
-                      required
-                      value={configUser}
-                      onChange={(e) => setConfigUser(e.target.value)}
-                      placeholder="เช่น admin"
-                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:border-emerald-700 font-medium"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">รหัสผ่านใหม่ (New Password)</label>
-                    <input
-                      type="text"
-                      required
-                      value={configPass}
-                      onChange={(e) => setConfigPass(e.target.value)}
-                      placeholder="เช่น รหัสผ่านเข้าคลัง"
-                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:border-emerald-700 font-medium"
-                    />
-                  </div>
-
-                  <div>
-                    <button
-                      type="submit"
-                      disabled={isSavingCreds}
-                      className="w-full bg-slate-900 hover:bg-slate-950 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
-                    >
-                      {isSavingCreds ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin text-white/80" />
-                          กำลังบันทึก...
-                        </>
-                      ) : (
-                        <>
-                          <Check className="w-4 h-4" />
-                          อัปเดตข้อมูลล็อกอิน
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </form>
-              </div>
-
               {/* Advanced Administration Reset Panel */}
               <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs space-y-4 md:col-span-2">
                 <h3 className="font-bold text-rose-600 text-sm flex items-center gap-1.5 border-b border-rose-50 pb-2">
@@ -896,29 +427,17 @@ end $$;`;
           
           {/* Supabase Status Pill */}
           <div className="mt-3.5">
-            {supabaseStatus === 'connected' && supabaseIsTableReady ? (
+            {supabaseStatus === 'connected' ? (
               <button
                 onClick={() => setActiveTab('backup')}
                 className="w-full flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-all text-left cursor-pointer"
-                title="พร้อมเก็บข้อมูลบน Supabase แล้ว คลิกเพื่อดูข้อมูลสำรอง"
+                title="เชื่อมต่อฐานข้อมูลคลาวด์แล้ว คลิกเพื่อดูข้อมูลสำรอง"
               >
                 <span className="flex items-center gap-1.5 min-w-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                   <span className="truncate">Supabase ซิงค์ออนไลน์</span>
                 </span>
                 <Database className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              </button>
-            ) : supabaseStatus === 'connected' && !supabaseIsTableReady ? (
-              <button
-                onClick={() => setActiveTab('backup')}
-                className="w-full flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 transition-all text-left cursor-pointer"
-                title="เชื่อมต่อ Supabase ได้แล้ว แต่ต้องสร้างตารางก่อนเก็บข้อมูล"
-              >
-                <span className="flex items-center gap-1.5 min-w-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                  <span className="truncate">Supabase รอตาราง</span>
-                </span>
-                <Database className="w-3.5 h-3.5 text-amber-600 shrink-0" />
               </button>
             ) : supabaseStatus === 'connecting' ? (
               <button
@@ -1021,15 +540,10 @@ end $$;`;
             className="flex items-center justify-center cursor-pointer transition-transform active:scale-95"
             title="ตั้งค่า/ดูสถานะซิงค์ข้อมูล Supabase"
           >
-            {supabaseStatus === 'connected' && supabaseIsTableReady ? (
+            {supabaseStatus === 'connected' ? (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
                 <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
                 ซิงค์แล้ว
-              </span>
-            ) : supabaseStatus === 'connected' && !supabaseIsTableReady ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200">
-                <span className="w-1 h-1 rounded-full bg-amber-500" />
-                รอตาราง
               </span>
             ) : supabaseStatus === 'connecting' ? (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200">
