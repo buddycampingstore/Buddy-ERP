@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { 
-  AppDatabase, 
+  AppData, 
   Order, 
   Variant 
 } from '../types';
@@ -33,25 +33,25 @@ import {
 } from 'recharts';
 
 interface DashboardViewProps {
-  db: AppDatabase;
+  data: AppData;
   onNavigate: (tab: string) => void;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ db, onNavigate }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ data, onNavigate }) => {
   // 1. Inventory Summary
-  const totalStockUnits = db.stockItems.filter(item => item.status === 'in_stock').length;
-  const totalInventoryCost = db.stockItems
+  const totalStockUnits = data.stockItems.filter(item => item.status === 'in_stock').length;
+  const totalInventoryCost = data.stockItems
     .filter(item => item.status === 'in_stock')
     .reduce((sum, item) => sum + item.wac_cost, 0);
 
   // 2. Active Orders (non-delivered, non-pending? Wait! let's say 'pending', 'confirmed', 'shipped' are active/outstanding)
-  const outstandingOrders = db.orders.filter(o => o.status !== 'delivered');
+  const outstandingOrders = data.orders.filter(o => o.status !== 'delivered');
 
   // 3. Profit/Sales This Month (June 2026 based on mock data timeline or current date)
   // Let's filter orders for the latest active month in dataset (June 2026 is our timeline)
   const currentYearMonth = '2026-06'; // Since the current mock datetime is 2026-06-23
 
-  const monthOrders = db.orders.filter(o => o.date.startsWith(currentYearMonth));
+  const monthOrders = data.orders.filter(o => o.date.startsWith(currentYearMonth));
   const monthSales = monthOrders.reduce((sum, o) => {
     const orderTotal = o.items.reduce((total, item) => total + item.final_price, 0);
     return sum + (orderTotal + (o.shipping_fee || 0) - o.discount);
@@ -63,7 +63,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ db, onNavigate }) 
   }, 0);
 
   // 4. Monthly Purchase Cost this month
-  const monthPurchase = db.purchaseBatches
+  const monthPurchase = data.purchaseBatches
     .filter(p => p.date.startsWith(currentYearMonth))
     .reduce((sum, p) => {
       const itemsCost = p.items.reduce((total, item) => total + (item.qty * item.unit_price), 0);
@@ -71,15 +71,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ db, onNavigate }) 
     }, 0);
 
   // Recent Orders (last 5)
-  const recentOrders = [...db.orders]
+  const recentOrders = [...data.orders]
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 5);
 
   // Alert: low stock variants (less than 3 items in stock)
-  const lowStockVariants = db.variants
+  const lowStockVariants = data.variants
     .map(v => {
-      const model = db.models.find(m => m.id === v.model_id);
-      const brand = model ? db.brands.find(b => b.id === model.brand_id) : null;
+      const model = data.models.find(m => m.id === v.model_id);
+      const brand = model ? data.brands.find(b => b.id === model.brand_id) : null;
       return {
         ...v,
         name: `${brand?.name || ''} ${model?.name || ''} (${v.color})`
@@ -88,7 +88,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ db, onNavigate }) 
     .filter(v => v.qty_in_stock <= 3);
 
   // Recharts: Sales by Channel
-  const channelDataMap = db.orders.reduce((acc, o) => {
+  const channelDataMap = data.orders.reduce((acc, o) => {
     const channelName = o.channel === 'fb' ? 'Facebook' : o.channel === 'ig' ? 'Instagram' : 'อื่นๆ';
     const orderTotal = o.items.reduce((total, item) => total + item.final_price, 0) + (o.shipping_fee || 0) - o.discount;
     acc[channelName] = (acc[channelName] || 0) + orderTotal;
@@ -103,7 +103,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ db, onNavigate }) 
   const COLORS = ['#047857', '#10b981', '#6ee7b7'];
 
   // Recharts: Sales Trend
-  const dailySalesMap = db.orders.reduce((acc, o) => {
+  const dailySalesMap = data.orders.reduce((acc, o) => {
     const day = o.date; // YYYY-MM-DD
     const orderTotal = o.items.reduce((total, item) => total + item.final_price, 0) + (o.shipping_fee || 0) - o.discount;
     acc[day] = (acc[day] || 0) + orderTotal;

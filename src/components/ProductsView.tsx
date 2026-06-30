@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { 
-  AppDatabase, 
+  AppData, 
   Brand, 
   Model, 
   Variant 
@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 interface ProductsViewProps {
-  db: AppDatabase;
+  data: AppData;
   addBrand: (name: string) => void;
   updateBrand: (id: string, name: string) => void;
   deleteBrand: (id: string) => void;
@@ -38,7 +38,7 @@ interface ProductsViewProps {
 }
 
 export const ProductsView: React.FC<ProductsViewProps> = ({
-  db,
+  data,
   addBrand,
   updateBrand,
   deleteBrand,
@@ -123,7 +123,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
   // --- DELETE CONFIRMATION CORRECTION (AUTO-SAFE) ---
   const handleConfirmDeleteBrand = (id: string, name: string) => {
-    const isUsed = db.models.some(m => m.brand_id === id);
+    const isUsed = data.models.some(m => m.brand_id === id);
     const msg = isUsed 
       ? `คำเตือน! แบรนด์ "${name}" มีรุ่นสินค้าผูกใช้อยู่ หากลบจะทำการลบข้อมูลรุ่นและสีพ่วงทั้งหมด ยืนยันที่จะลบหรือไม่?`
       : `ยืนยันการลบแบรนด์ "${name}" หรือไม่?`;
@@ -133,7 +133,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   };
 
   const handleConfirmDeleteModel = (id: string, name: string) => {
-    const isUsed = db.variants.some(v => v.model_id === id);
+    const isUsed = data.variants.some(v => v.model_id === id);
     const msg = isUsed 
       ? `คำเตือน! รุ่นสินค้า "${name}" มีตัวเลือกสีและคลังสต็อกผูกอยู่ หากลบระบบจะล้างสีและสต็อกทั้งหมด ยืนยันการลบหรือไม่?`
       : `ยืนยันการลบรุ่นสินค้า "${name}" หรือไม่?`;
@@ -143,7 +143,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   };
 
   const handleConfirmDeleteVariant = (id: string, color: string, name: string) => {
-    const count = db.stockItems.filter(item => item.variant_id === id && item.status === 'in_stock').length;
+    const count = data.stockItems.filter(item => item.variant_id === id && item.status === 'in_stock').length;
     const msg = count > 0 
       ? `คำเตือน! ตัวเลือกสี "${color}" นี้มีสินค้าค้างอยู่ในสต็อกจริง ${count} ตัว หากลบตัวเลือกนี้ ข้อมูลสต็อกทั้งหมดของตัวเดิมจะถูกล้าง ยืนยันการลบหรือไม่?`
       : `ยืนยันการลบตัวเลือกสี "${color}" ของรุ่น "${name}" หรือไม่?`;
@@ -153,9 +153,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   };
 
   // --- FILTERED VARIANTS ---
-  const filteredVariants = db.variants.map(v => {
-    const model = db.models.find(m => m.id === v.model_id);
-    const brand = model ? db.brands.find(b => b.id === model.brand_id) : null;
+  const filteredVariants = data.variants.map(v => {
+    const model = data.models.find(m => m.id === v.model_id);
+    const brand = model ? data.brands.find(b => b.id === model.brand_id) : null;
     return {
       ...v,
       modelName: model?.name || 'ไม่มีรุ่น',
@@ -202,7 +202,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     filteredVariants.forEach(v => {
       let existingGroup = groups.find(g => g.modelId === v.model_id);
       if (!existingGroup) {
-        const modelObj = db.models.find(m => m.id === v.model_id);
+        const modelObj = data.models.find(m => m.id === v.model_id);
         existingGroup = {
           modelId: v.model_id,
           modelName: v.modelName,
@@ -217,7 +217,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     });
 
     return groups;
-  }, [filteredVariants, db.models]);
+  }, [filteredVariants, data.models]);
 
   const groupedBrands = React.useMemo(() => {
     const brandGroups: {
@@ -252,11 +252,11 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     const brandGroups: {
       brandId: string;
       brandName: string;
-      models: typeof db.models;
+      models: typeof data.models;
     }[] = [];
 
-    db.brands.forEach(brand => {
-      const modelsForBrand = db.models.filter(m => m.brand_id === brand.id);
+    data.brands.forEach(brand => {
+      const modelsForBrand = data.models.filter(m => m.brand_id === brand.id);
       brandGroups.push({
         brandId: brand.id,
         brandName: brand.name,
@@ -264,7 +264,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       });
     });
 
-    const unbrandedModels = db.models.filter(m => !m.brand_id || !db.brands.some(b => b.id === m.brand_id));
+    const unbrandedModels = data.models.filter(m => !m.brand_id || !data.brands.some(b => b.id === m.brand_id));
     if (unbrandedModels.length > 0) {
       brandGroups.push({
         brandId: 'unbranded',
@@ -278,7 +278,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       if (b.brandId === 'unbranded') return -1;
       return a.brandName.localeCompare(b.brandName, 'th');
     });
-  }, [db.brands, db.models]);
+  }, [data.brands, data.models]);
 
   return (
     <div className="space-y-6" id="products-view-container">
@@ -297,7 +297,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                 setVariantEditId(null);
                 setVariantColor('');
                 setVariantStandardSalePrice('');
-                if (db.models.length > 0) setVariantModelId(db.models[0].id);
+                if (data.models.length > 0) setVariantModelId(data.models[0].id);
                 setShowVariantForm(true);
               }}
               className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold py-2 px-3 rounded-xl flex items-center gap-1 shadow-sm transition-colors cursor-pointer"
@@ -363,10 +363,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                     : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                 }`}
               >
-                ทั้งหมด ({db.models.length} รุ่น)
+                ทั้งหมด ({data.models.length} รุ่น)
               </button>
-              {db.brands.map(brand => {
-                const modelCount = db.models.filter(m => m.brand_id === brand.id).length;
+              {data.brands.map(brand => {
+                const modelCount = data.models.filter(m => m.brand_id === brand.id).length;
                 return (
                   <button
                     key={brand.id}
@@ -662,9 +662,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {db.brands.length > 0 ? (
-                    db.brands.map(brand => {
-                      const counts = db.models.filter(m => m.brand_id === brand.id).length;
+                  {data.brands.length > 0 ? (
+                    data.brands.map(brand => {
+                      const counts = data.models.filter(m => m.brand_id === brand.id).length;
                       return (
                         <tr key={brand.id} className="hover:bg-slate-50/20">
                           <td className="py-3 px-4 font-semibold text-slate-800">
@@ -710,9 +710,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
             {/* Mobile Card Layout for Brands */}
             <div className="block md:hidden space-y-2.5">
-              {db.brands.length > 0 ? (
-                db.brands.map(brand => {
-                  const counts = db.models.filter(m => m.brand_id === brand.id).length;
+              {data.brands.length > 0 ? (
+                data.brands.map(brand => {
+                  const counts = data.models.filter(m => m.brand_id === brand.id).length;
                   return (
                     <div key={brand.id} className="bg-white p-4 rounded-2xl border border-slate-100 flex items-center justify-between shadow-xs">
                       <div className="space-y-1">
@@ -760,13 +760,13 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
               </div>
               <button
                 onClick={() => {
-                  if (db.brands.length === 0) {
+                  if (data.brands.length === 0) {
                     alert('กรุณาสร้างแบรนด์สินค้าก่อนอย่างน้อย 1 แบรนด์ จึงจะเพิ่มรุ่นสินค้าได้');
                     return;
                   }
                   setModelEditId(null);
                   setModelName('');
-                  setModelBrandId(db.brands[0].id);
+                  setModelBrandId(data.brands[0].id);
                   setModelImage('');
                   setShowModelForm(true);
                 }}
@@ -805,7 +805,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                       {hasModels ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           {brandGroup.models.map(model => {
-                            const activeVariants = db.variants.filter(v => v.model_id === model.id).length;
+                            const activeVariants = data.variants.filter(v => v.model_id === model.id).length;
                             return (
                               <div 
                                 key={model.id} 
@@ -820,7 +820,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                                       referrerPolicy="no-referrer" 
                                       title="คลิกเพื่อขยายดูรูปภาพ"
                                       onClick={() => {
-                                        const brand = db.brands.find(b => b.id === model.brand_id);
+                                        const brand = data.brands.find(b => b.id === model.brand_id);
                                         setPreviewImage(model.image || null);
                                         setPreviewTitle(`${brand?.name || 'เก้าอี้'} ${model.name}`);
                                       }}
@@ -962,7 +962,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                   className="w-full text-xs p-3 bg-slate-50 outline-hidden border border-slate-200 rounded-xl text-slate-800"
                   required
                 >
-                  {db.brands.map(b => (
+                  {data.brands.map(b => (
                     <option key={b.id} value={b.id}>{b.name}</option>
                   ))}
                 </select>
@@ -1076,7 +1076,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
               </button>
             </div>
             <form onSubmit={handleSaveVariant} className="p-6 space-y-4">
-              {db.models.length === 0 ? (
+              {data.models.length === 0 ? (
                 <div className="text-rose-500 text-xs font-medium bg-rose-50 p-3 rounded-lg">
                   ไม่พบรหัสรุ่นสินค้ารายการใดๆ พลิกลุกสร้างรหัสรุ่นย่อยก่อนนะ!
                 </div>
@@ -1090,8 +1090,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                       className="w-full text-xs p-3 bg-slate-50 outline-hidden border border-slate-200 rounded-xl text-slate-800"
                       required
                     >
-                      {db.models.map(m => {
-                        const brand = db.brands.find(b => b.id === m.brand_id);
+                      {data.models.map(m => {
+                        const brand = data.brands.find(b => b.id === m.brand_id);
                         return (
                           <option key={m.id} value={m.id}>
                             [{brand?.name || 'ไม่มีแบรนด์'}] - {m.name}
@@ -1139,7 +1139,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={db.models.length === 0}
+                  disabled={data.models.length === 0}
                   className="px-5 py-2 text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 text-white rounded-xl"
                 >
                   บันทึกข้อมูลสินค้า

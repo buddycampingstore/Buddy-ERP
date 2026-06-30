@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { 
-  AppDatabase, 
+  AppData, 
   Order, 
   Customer, 
   OrderChannel, 
@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 
 interface OrdersViewProps {
-  db: AppDatabase;
+  data: AppData;
   createOrder: (orderData: {
     customer_id: string;
     date: string;
@@ -54,7 +54,7 @@ interface NewOrderItem {
 }
 
 export const OrdersView: React.FC<OrdersViewProps> = ({
-  db,
+  data,
   createOrder,
   updateOrderStatus,
   deleteOrder
@@ -84,17 +84,17 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
   // Set first variant as default on open
   React.useEffect(() => {
-    if (isAdding && db.variants.length > 0 && !items[0].variant_id) {
-      const v0 = db.variants[0];
+    if (isAdding && data.variants.length > 0 && !items[0].variant_id) {
+      const v0 = data.variants[0];
       const defaultPrice = (v0 && v0.standard_sale_price !== undefined) ? v0.standard_sale_price : 2200;
       setItems([{ variant_id: v0.id, qty: 1, sale_price: defaultPrice, discount: 0 }]);
     }
-  }, [isAdding, db.variants, items]);
+  }, [isAdding, data.variants, items]);
 
   // --- FORM HANDLERS ---
   const handleAddItemRow = () => {
-    const firstId = db.variants[0]?.id || '';
-    const v = db.variants.find(variant => variant.id === firstId);
+    const firstId = data.variants[0]?.id || '';
+    const v = data.variants.find(variant => variant.id === firstId);
     const defaultPrice = (v && v.standard_sale_price !== undefined) ? v.standard_sale_price : 2200;
     setItems([...items, { variant_id: firstId, qty: 1, sale_price: defaultPrice, discount: 0 }]);
   };
@@ -113,7 +113,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         };
         // Auto-fill standard sale price when variant is selected
         if (field === 'variant_id') {
-          const v = db.variants.find(variant => variant.id === value);
+          const v = data.variants.find(variant => variant.id === value);
           if (v && v.standard_sale_price !== undefined) {
             updated.sale_price = v.standard_sale_price;
           }
@@ -155,7 +155,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       setGlobalDiscount(0);
       setShippingFee(0);
       setShippingCost(0);
-      const defaultVariant = db.variants[0];
+      const defaultVariant = data.variants[0];
       const defaultPrice = (defaultVariant && defaultVariant.standard_sale_price !== undefined) ? defaultVariant.standard_sale_price : 2200;
       setItems([{ variant_id: defaultVariant?.id || '', qty: 1, sale_price: defaultPrice, discount: 0 }]);
     } catch (err: any) {
@@ -165,7 +165,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
   // --- REAL-TIME CALCULATIONS ---
   const calculatedItems = items.map(item => {
-    const variant = db.variants.find(v => v.id === item.variant_id);
+    const variant = data.variants.find(v => v.id === item.variant_id);
     const wac = variant?.current_wac || 0;
     const itemTotal = (item.sale_price - item.discount) * item.qty;
     const costBasisTotal = wac * item.qty;
@@ -176,7 +176,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       wac,
       itemTotal,
       profitTotal,
-      error: variant ? (db.stockItems.filter(s => s.variant_id === item.variant_id && s.status === 'in_stock').length < item.qty) : false
+      error: variant ? (data.stockItems.filter(s => s.variant_id === item.variant_id && s.status === 'in_stock').length < item.qty) : false
     };
   });
 
@@ -185,7 +185,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const totalProfit_สด = totalSale_สด - totalCost_สด;
 
   // --- FILTERED ORDERS LIST ---
-  const filteredOrders = db.orders.filter(order => {
+  const filteredOrders = data.orders.filter(order => {
     // 1. Filter by status
     if (statusFilter !== 'all' && order.status !== statusFilter) {
       return false;
@@ -198,8 +198,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       const matchId = order.id.toLowerCase().includes(searchLow);
       
       const matchItems = order.items.some(oi => {
-        const v = db.variants.find(varItem => varItem.id === oi.variant_id);
-        const m = v ? db.models.find(mod => mod.id === v.model_id) : null;
+        const v = data.variants.find(varItem => varItem.id === oi.variant_id);
+        const m = v ? data.models.find(mod => mod.id === v.model_id) : null;
         return m?.name.toLowerCase().includes(searchLow) || v?.color.toLowerCase().includes(searchLow);
       });
 
@@ -409,33 +409,33 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                 {/* Rows mapped */}
                 <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
                   {items.map((item, idx) => {
-                    const variant = db.variants.find(v => v.id === item.variant_id);
-                    const stockOnHand = db.stockItems.filter(s => s.variant_id === item.variant_id && s.status === 'in_stock').length;
+                    const variant = data.variants.find(v => v.id === item.variant_id);
+                    const stockOnHand = data.stockItems.filter(s => s.variant_id === item.variant_id && s.status === 'in_stock').length;
                     const error = stockOnHand < item.qty;
 
                     // Resolve current parent hierarchy for Brand -> Model -> Variant
-                    const currentModel = variant ? db.models.find(m => m.id === variant.model_id) : null;
-                    const currentBrand = currentModel ? db.brands.find(b => b.id === currentModel.brand_id) : null;
+                    const currentModel = variant ? data.models.find(m => m.id === variant.model_id) : null;
+                    const currentBrand = currentModel ? data.brands.find(b => b.id === currentModel.brand_id) : null;
 
                     const activeBrandId = currentBrand?.id || '';
                     const activeModelId = currentModel?.id || '';
                     const activeVariantId = item.variant_id || '';
 
                     // Filter cascading levels
-                    const modelsForBrand = db.models.filter(m => m.brand_id === activeBrandId);
-                    const variantsForModel = db.variants.filter(v => v.model_id === activeModelId);
+                    const modelsForBrand = data.models.filter(m => m.brand_id === activeBrandId);
+                    const variantsForModel = data.variants.filter(v => v.model_id === activeModelId);
 
                     // Re-routing changers
                     const handleBrandChange = (bId: string) => {
-                      const brandModels = db.models.filter(m => m.brand_id === bId);
+                      const brandModels = data.models.filter(m => m.brand_id === bId);
                       const matchedModel = brandModels[0];
-                      const modelVariants = matchedModel ? db.variants.filter(v => v.model_id === matchedModel.id) : [];
+                      const modelVariants = matchedModel ? data.variants.filter(v => v.model_id === matchedModel.id) : [];
                       const nextVariantId = modelVariants[0]?.id || '';
                       handleUpdateItemRow(idx, 'variant_id', nextVariantId);
                     };
 
                     const handleModelChange = (mId: string) => {
-                      const modelVariants = db.variants.filter(v => v.model_id === mId);
+                      const modelVariants = data.variants.filter(v => v.model_id === mId);
                       const nextVariantId = modelVariants[0]?.id || '';
                       handleUpdateItemRow(idx, 'variant_id', nextVariantId);
                     };
@@ -481,7 +481,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                                   required
                                 >
                                   <option value="" disabled>-- เลือกยี่ห้อ --</option>
-                                  {db.brands.map(b => (
+                                  {data.brands.map(b => (
                                     <option key={b.id} value={b.id}>{b.name}</option>
                                   ))}
                                 </select>
@@ -757,9 +757,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                       <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-[11px] space-y-1">
                         <strong className="text-slate-500 block mb-1">รายการเก้าอี้ในบิล ({order.items.length} ตัว):</strong>
                         {order.items.map((oi, idx) => {
-                          const variant = db.variants.find(v => v.id === oi.variant_id);
-                          const model = variant ? db.models.find(m => m.id === variant.model_id) : null;
-                          const brand = model ? db.brands.find(b => b.id === model.brand_id) : null;
+                          const variant = data.variants.find(v => v.id === oi.variant_id);
+                          const model = variant ? data.models.find(m => m.id === variant.model_id) : null;
+                          const brand = model ? data.brands.find(b => b.id === model.brand_id) : null;
                           return (
                             <div key={idx} className="flex items-center justify-between gap-3 text-slate-700 border-b border-slate-100 last:border-b-0 py-1.5 first:pt-0 last:pb-0">
                               <div className="flex items-center gap-2 min-w-0">

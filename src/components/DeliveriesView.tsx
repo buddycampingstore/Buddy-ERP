@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { 
-  AppDatabase, 
+  AppData, 
   Delivery, 
   DeliveryStatus, 
   Order 
@@ -23,11 +23,11 @@ import {
 } from 'lucide-react';
 
 interface DeliveriesViewProps {
-  db: AppDatabase;
+  data: AppData;
   updateDelivery: (orderId: string, updates: Partial<Delivery>) => void;
 }
 
-export const DeliveriesView: React.FC<DeliveriesViewProps> = ({ db, updateDelivery }) => {
+export const DeliveriesView: React.FC<DeliveriesViewProps> = ({ data, updateDelivery }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   
@@ -54,8 +54,8 @@ export const DeliveriesView: React.FC<DeliveriesViewProps> = ({ db, updateDelive
     alert('อัปเดตข้อมูลการจัดส่งและติดตามพัสดุเรียบร้อย!');
   };
 
-  const filteredDeliveries = db.deliveries.filter(del => {
-    const order = db.orders.find(o => o.id === del.order_id);
+  const filteredDeliveries = data.deliveries.filter(del => {
+    const order = data.orders.find(o => o.id === del.order_id);
     
     // Status Filter
     if (statusFilter !== 'all' && del.status !== statusFilter) {
@@ -144,7 +144,7 @@ export const DeliveriesView: React.FC<DeliveriesViewProps> = ({ db, updateDelive
       <div className="space-y-4" id="deliveries-list">
         {filteredDeliveries.length > 0 ? (
           filteredDeliveries.map(del => {
-            const order = db.orders.find(o => o.id === del.order_id);
+            const order = data.orders.find(o => o.id === del.order_id);
             const isEditing = editingOrderId === del.order_id;
             const isPickupType = order?.delivery_type === 'pickup';
 
@@ -184,8 +184,8 @@ export const DeliveriesView: React.FC<DeliveriesViewProps> = ({ db, updateDelive
                       <span className="text-slate-400 block font-semibold mb-1">สิ่งของที่ต้องทำการขนย้าย ({order.items.length} ตัว):</span>
                       <div className="space-y-0.5 text-slate-600 font-medium">
                         {order.items.map((oi, i) => {
-                          const variant = db.variants.find(v => v.id === oi.variant_id);
-                          const model = variant ? db.models.find(m => m.id === variant.model_id) : null;
+                          const variant = data.variants.find(v => v.id === oi.variant_id);
+                          const model = variant ? data.models.find(m => m.id === variant.model_id) : null;
                           return (
                             <div key={i}>
                               - {model?.name} ({variant?.color})

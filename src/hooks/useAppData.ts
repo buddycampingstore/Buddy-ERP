@@ -5,7 +5,7 @@
 
 import { useState } from 'react';
 import { 
-  AppDatabase, 
+  AppData, 
   Brand, 
   Model, 
   Variant, 
@@ -21,7 +21,7 @@ import {
   DeliveryStatus 
 } from '../types';
 
-const EMPTY_DATABASE: AppDatabase = {
+const EMPTY_DATA: AppData = {
   brands: [],
   models: [],
   variants: [],
@@ -32,8 +32,8 @@ const EMPTY_DATABASE: AppDatabase = {
   deliveries: []
 };
 
-export function useDatabase() {
-  const [db, setDb] = useState<AppDatabase>(EMPTY_DATABASE);
+export function useAppData() {
+  const [data, setData] = useState<AppData>(EMPTY_DATA);
 
   // Recalculate variant quantities dynamically to ensure robustness
   const syncVariantQuantities = (currentStockItems: StockItem[], currentVariants: Variant[]): Variant[] => {
@@ -52,7 +52,7 @@ export function useDatabase() {
       id: `b-${Date.now()}`,
       name: name.trim()
     };
-    setDb(prev => ({
+    setData(prev => ({
       ...prev,
       brands: [...prev.brands, newBrand]
     }));
@@ -60,14 +60,14 @@ export function useDatabase() {
   };
 
   const updateBrand = (id: string, name: string) => {
-    setDb(prev => ({
+    setData(prev => ({
       ...prev,
       brands: prev.brands.map(b => b.id === id ? { ...b, name: name.trim() } : b)
     }));
   };
 
   const deleteBrand = (id: string) => {
-    setDb(prev => {
+    setData(prev => {
       // Also delete models under this brand, and prevent breaking variants if they exist
       const modelsToDelete = prev.models.filter(m => m.brand_id === id).map(m => m.id);
       return {
@@ -87,7 +87,7 @@ export function useDatabase() {
       name: name.trim(),
       image
     };
-    setDb(prev => ({
+    setData(prev => ({
       ...prev,
       models: [...prev.models, newModel]
     }));
@@ -95,14 +95,14 @@ export function useDatabase() {
   };
 
   const updateModel = (id: string, name: string, brand_id: string, image?: string) => {
-    setDb(prev => ({
+    setData(prev => ({
       ...prev,
       models: prev.models.map(m => m.id === id ? { ...m, name: name.trim(), brand_id, image: image !== undefined ? image : m.image } : m)
     }));
   };
 
   const deleteModel = (id: string) => {
-    setDb(prev => ({
+    setData(prev => ({
       ...prev,
       models: prev.models.filter(m => m.id !== id),
       variants: prev.variants.filter(v => v.model_id !== id)
@@ -119,7 +119,7 @@ export function useDatabase() {
       current_wac: 0,
       standard_sale_price: standard_sale_price !== undefined ? standard_sale_price : 0
     };
-    setDb(prev => ({
+    setData(prev => ({
       ...prev,
       variants: [...prev.variants, newVariant]
     }));
@@ -127,7 +127,7 @@ export function useDatabase() {
   };
 
   const updateVariant = (id: string, color: string, model_id: string, standard_sale_price?: number) => {
-    setDb(prev => ({
+    setData(prev => ({
       ...prev,
       variants: prev.variants.map(v => v.id === id ? { 
         ...v, 
@@ -139,7 +139,7 @@ export function useDatabase() {
   };
 
   const deleteVariant = (id: string) => {
-    setDb(prev => ({
+    setData(prev => ({
       ...prev,
       variants: prev.variants.filter(v => v.id !== id),
       stockItems: prev.stockItems.filter(item => item.variant_id !== id)
@@ -173,7 +173,7 @@ export function useDatabase() {
       note: note?.trim()
     };
 
-    setDb(prev => {
+    setData(prev => {
       const updatedVariants = [...prev.variants];
       const newStockItems: StockItem[] = [];
 
@@ -247,7 +247,7 @@ export function useDatabase() {
       facebook: customerData.facebook.trim(),
       note: customerData.note.trim()
     };
-    setDb(prev => ({
+    setData(prev => ({
       ...prev,
       customers: [...prev.customers, newCustomer]
     }));
@@ -255,7 +255,7 @@ export function useDatabase() {
   };
 
   const updateCustomer = (id: string, customerData: Omit<Customer, 'id'>) => {
-    setDb(prev => ({
+    setData(prev => ({
       ...prev,
       customers: prev.customers.map(c => c.id === id ? {
         ...c,
@@ -283,7 +283,7 @@ export function useDatabase() {
     
     // Validate if enough stock is available for each item
     for (const orderItem of orderData.items) {
-      const activeStockCount = db.stockItems.filter(
+      const activeStockCount = data.stockItems.filter(
         item => item.variant_id === orderItem.variant_id && item.status === 'in_stock'
       ).length;
       if (activeStockCount < orderItem.qty) {
@@ -291,7 +291,7 @@ export function useDatabase() {
       }
     }
 
-    setDb(prev => {
+    setData(prev => {
       const updatedStockItems = [...prev.stockItems];
       const orderItemsList: OrderItem[] = [];
 
@@ -384,7 +384,7 @@ export function useDatabase() {
       'delivered': 'delivered'
     };
 
-    setDb(prev => ({
+    setData(prev => ({
       ...prev,
       orders: prev.orders.map(o => o.id === orderId ? { ...o, status } : o),
       deliveries: prev.deliveries.map(d => d.order_id === orderId ? {
@@ -395,7 +395,7 @@ export function useDatabase() {
   };
 
   const deleteOrder = (orderId: string) => {
-    setDb(prev => {
+    setData(prev => {
       // Find all StockItems committed to this order and restore them
       const nextStockItems = prev.stockItems.map(item => {
         if (item.order_id === orderId) {
@@ -422,7 +422,7 @@ export function useDatabase() {
 
   // --- DELIVERIES ---
   const updateDelivery = (orderId: string, updates: Partial<Delivery>) => {
-    setDb(prev => {
+    setData(prev => {
       const updatedDeliveries = prev.deliveries.map(d => {
         if (d.order_id === orderId) {
           return {
@@ -462,7 +462,7 @@ export function useDatabase() {
   // --- BACKUP / IMPORT / EXPORT / RESET ---
   const importBackup = (jsonString: string) => {
     try {
-      const parsed = JSON.parse(jsonString) as AppDatabase;
+      const parsed = JSON.parse(jsonString) as AppData;
       if (
         Array.isArray(parsed.brands) &&
         Array.isArray(parsed.models) &&
@@ -473,7 +473,7 @@ export function useDatabase() {
         Array.isArray(parsed.orders) &&
         Array.isArray(parsed.deliveries)
       ) {
-        setDb(parsed);
+        setData(parsed);
         return { success: true };
       } else {
         return { success: false, error: 'รูปแบบข้อมูลสำรองไม่ถูกต้อง (ขาดตารางข้อมูลหลักสำคัญ)' };
@@ -483,16 +483,12 @@ export function useDatabase() {
     }
   };
 
-  const resetDatabase = () => {
-    setDb(EMPTY_DATABASE);
-  };
-
-  const clearDatabase = () => {
-    setDb(EMPTY_DATABASE);
+  const clearData = () => {
+    setData(EMPTY_DATA);
   };
 
   return {
-    db,
+    data,
     addBrand,
     updateBrand,
     deleteBrand,
@@ -510,8 +506,6 @@ export function useDatabase() {
     deleteOrder,
     updateDelivery,
     importBackup,
-    resetDatabase,
-    clearDatabase,
-    setDb
+    clearData
   };
 }

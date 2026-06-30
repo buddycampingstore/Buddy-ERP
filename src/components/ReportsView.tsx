@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { 
-  AppDatabase, 
+  AppData, 
   Order, 
   Variant 
 } from '../types';
@@ -36,19 +36,19 @@ import {
 } from 'recharts';
 
 interface ReportsViewProps {
-  db: AppDatabase;
+  data: AppData;
 }
 
-export const ReportsView: React.FC<ReportsViewProps> = ({ db }) => {
+export const ReportsView: React.FC<ReportsViewProps> = ({ data }) => {
   // --- 1. DYNAMIC PROFIT & LOSS CALCULATIONS ---
   // A. Total Store Revenue across all orders
-  const totalRevenue = db.orders.reduce((sum, order) => {
+  const totalRevenue = data.orders.reduce((sum, order) => {
     const subTotal = order.items.reduce((acc, item) => acc + item.final_price, 0);
     return sum + (subTotal + (order.shipping_fee || 0) - order.discount);
   }, 0);
 
   // B. Cost of Goods Sold (COGS) based on snapshotted WAC_at_sale (snapshot is preserved correctly)
-  const totalCogs = db.orders.reduce((sum, order) => {
+  const totalCogs = data.orders.reduce((sum, order) => {
     return sum + order.items.reduce((acc, item) => acc + item.wac_at_sale, 0);
   }, 0);
 
@@ -56,12 +56,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db }) => {
   const grossProfit = totalRevenue - totalCogs;
 
   // D. Batch shipping/unloading overhead expenses (Overhead in purchase batches)
-  const totalOverheadExpense = db.purchaseBatches.reduce((sum, batch) => {
+  const totalOverheadExpense = data.purchaseBatches.reduce((sum, batch) => {
     return sum + batch.shipping_cost + batch.other_cost;
   }, 0);
 
   // D.1 Order-level actual shipping cost paid by store
-  const totalOrderShippingCostsPaid = db.orders.reduce((sum, order) => {
+  const totalOrderShippingCostsPaid = data.orders.reduce((sum, order) => {
     return sum + (order.shipping_cost || 0);
   }, 0);
 
@@ -69,12 +69,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db }) => {
   const netProfit = grossProfit - totalOverheadExpense - totalOrderShippingCostsPaid;
 
   // --- 2. STOCK REMAINING VALUE ---
-  const activeStockItems = db.stockItems.filter(item => item.status === 'in_stock');
+  const activeStockItems = data.stockItems.filter(item => item.status === 'in_stock');
   const inventoryTotalVal = activeStockItems.reduce((sum, item) => sum + item.wac_cost, 0);
 
   // --- 3. RECHARTS: SALES & EXPENSE MONTH-BY-MONTH ---
   // Collect month keys automatically
-  const monthlyDataMap = db.orders.reduce((acc, o) => {
+  const monthlyDataMap = data.orders.reduce((acc, o) => {
     const month = o.date.substring(0, 7); // e.g. "2026-06"
     const orderTotal = o.items.reduce((total, item) => total + item.final_price, 0) + (o.shipping_fee || 0) - o.discount;
     const orderCogs = o.items.reduce((total, item) => total + item.wac_at_sale, 0) + (o.shipping_cost || 0);
@@ -99,11 +99,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db }) => {
     .sort((a, b) => a.month.localeCompare(b.month));
 
   // --- 4. BRAND PERFORMANCE METRIC ---
-  const brandSalesMap = db.orders.reduce((acc, order) => {
+  const brandSalesMap = data.orders.reduce((acc, order) => {
     order.items.forEach(item => {
-      const variant = db.variants.find(v => v.id === item.variant_id);
-      const model = variant ? db.models.find(m => m.id === variant.model_id) : null;
-      const brand = model ? db.brands.find(b => b.id === model.brand_id) : null;
+      const variant = data.variants.find(v => v.id === item.variant_id);
+      const model = variant ? data.models.find(m => m.id === variant.model_id) : null;
+      const brand = model ? data.brands.find(b => b.id === model.brand_id) : null;
       const brandName = brand?.name || 'อิสระ';
 
       if (!acc[brandName]) {
@@ -304,10 +304,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {db.variants.length > 0 ? (
-                db.variants.map(v => {
-                  const model = db.models.find(m => m.id === v.model_id);
-                  const brand = model ? db.brands.find(b => b.id === model.brand_id) : null;
+              {data.variants.length > 0 ? (
+                data.variants.map(v => {
+                  const model = data.models.find(m => m.id === v.model_id);
+                  const brand = model ? data.brands.find(b => b.id === model.brand_id) : null;
                   const c_val = v.qty_in_stock * v.current_wac;
 
                   return (
@@ -339,10 +339,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db }) => {
 
           {/* Mobile Cards View (Visible on mobile only, hidden on md and up) */}
           <div className="md:hidden space-y-3.5">
-            {db.variants.length > 0 ? (
-              db.variants.map(v => {
-                const model = db.models.find(m => m.id === v.model_id);
-                const brand = model ? db.brands.find(b => b.id === model.brand_id) : null;
+            {data.variants.length > 0 ? (
+              data.variants.map(v => {
+                const model = data.models.find(m => m.id === v.model_id);
+                const brand = model ? data.brands.find(b => b.id === model.brand_id) : null;
                 const c_val = v.qty_in_stock * v.current_wac;
 
                 return (

@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { 
-  AppDatabase, 
+  AppData, 
   Variant, 
   PurchaseBatch 
 } from '../types';
@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 interface PurchaseViewProps {
-  db: AppDatabase;
+  data: AppData;
   addPurchaseBatch: (
     date: string,
     shipping_cost: number,
@@ -41,7 +41,7 @@ interface NewBatchItem {
   unit_price: number;
 }
 
-export const PurchaseView: React.FC<PurchaseViewProps> = ({ db, addPurchaseBatch }) => {
+export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBatch }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null);
 
@@ -58,14 +58,14 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ db, addPurchaseBatch
   const [otherCost, setOtherCost] = useState<number>(0);
   const [note, setNote] = useState('');
   const [items, setItems] = useState<NewBatchItem[]>([
-    { variant_id: db.variants[0]?.id || '', qty: 5, unit_price: 1500 }
+    { variant_id: data.variants[0]?.id || '', qty: 5, unit_price: 1500 }
   ]);
 
   // --- HANDLERS ---
   const handleAddItemRow = () => {
     setItems([
       ...items,
-      { variant_id: db.variants[0]?.id || '', qty: 5, unit_price: 1500 }
+      { variant_id: data.variants[0]?.id || '', qty: 5, unit_price: 1500 }
     ]);
   };
 
@@ -103,7 +103,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ db, addPurchaseBatch
       setShippingCost(0);
       setOtherCost(0);
       setNote('');
-      setItems([{ variant_id: db.variants[0]?.id || '', qty: 5, unit_price: 1500 }]);
+      setItems([{ variant_id: data.variants[0]?.id || '', qty: 5, unit_price: 1500 }]);
     }
   };
 
@@ -127,7 +127,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ db, addPurchaseBatch
           {!isAdding ? (
             <button
               onClick={() => {
-                if (db.variants.length === 0) {
+                if (data.variants.length === 0) {
                   alert('กรุณาเพิ่มรายละเอียดสินค้าสี/รุ่นอย่างน้อย 1 รายการในหน้า "สินค้า" ก่อนบันทึกรับเข้า');
                   return;
                 }
@@ -240,40 +240,40 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ db, addPurchaseBatch
                 {/* Items rows */}
                 <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
                   {items.map((item, idx) => {
-                    const selectedVariant = db.variants.find(v => v.id === item.variant_id);
+                    const selectedVariant = data.variants.find(v => v.id === item.variant_id);
                     // Determine cost + overhead
                     const cost_ใหม่_ตัว = item.unit_price + actualOverheadPerUnit;
                     const preWac = selectedVariant?.current_wac || 0;
                     
                     // Forecast new WAC
-                    const qty_เดิม_ตัว = db.stockItems.filter(s => s.variant_id === item.variant_id && s.status === 'in_stock').length;
+                    const qty_เดิม_ตัว = data.stockItems.filter(s => s.variant_id === item.variant_id && s.status === 'in_stock').length;
                     const estNewWac = (qty_เดิม_ตัว + item.qty > 0)
                       ? (qty_เดิม_ตัว * preWac + item.qty * cost_ใหม่_ตัว) / (qty_เดิม_ตัว + item.qty)
                       : cost_ใหม่_ตัว;
 
                     // Resolve hierarchy
-                    const currentModel = selectedVariant ? db.models.find(m => m.id === selectedVariant.model_id) : null;
-                    const currentBrand = currentModel ? db.brands.find(b => b.id === currentModel.brand_id) : null;
+                    const currentModel = selectedVariant ? data.models.find(m => m.id === selectedVariant.model_id) : null;
+                    const currentBrand = currentModel ? data.brands.find(b => b.id === currentModel.brand_id) : null;
 
                     const activeBrandId = currentBrand?.id || '';
                     const activeModelId = currentModel?.id || '';
                     const activeVariantId = item.variant_id || '';
 
                     // Filter cascading levels
-                    const modelsForBrand = db.models.filter(m => m.brand_id === activeBrandId);
-                    const variantsForModel = db.variants.filter(v => v.model_id === activeModelId);
+                    const modelsForBrand = data.models.filter(m => m.brand_id === activeBrandId);
+                    const variantsForModel = data.variants.filter(v => v.model_id === activeModelId);
 
                     // Re-routing changers
                     const handleBrandChange = (bId: string) => {
-                      const brandModels = db.models.filter(m => m.brand_id === bId);
+                      const brandModels = data.models.filter(m => m.brand_id === bId);
                       const matchedModel = brandModels[0];
-                      const modelVariants = matchedModel ? db.variants.filter(v => v.model_id === matchedModel.id) : [];
+                      const modelVariants = matchedModel ? data.variants.filter(v => v.model_id === matchedModel.id) : [];
                       const nextVariantId = modelVariants[0]?.id || '';
                       handleUpdateItemRow(idx, 'variant_id', nextVariantId);
                     };
 
                     const handleModelChange = (mId: string) => {
-                      const modelVariants = db.variants.filter(v => v.model_id === mId);
+                      const modelVariants = data.variants.filter(v => v.model_id === mId);
                       const nextVariantId = modelVariants[0]?.id || '';
                       handleUpdateItemRow(idx, 'variant_id', nextVariantId);
                     };
@@ -318,7 +318,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ db, addPurchaseBatch
                                   required
                                 >
                                   <option value="" disabled>-- เลือกยี่ห้อ --</option>
-                                  {db.brands.map(b => (
+                                  {data.brands.map(b => (
                                     <option key={b.id} value={b.id}>{b.name}</option>
                                   ))}
                                 </select>
@@ -469,8 +469,8 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ db, addPurchaseBatch
           </div>
 
           <div className="space-y-3">
-            {db.purchaseBatches.length > 0 ? (
-              db.purchaseBatches.map(batch => {
+            {data.purchaseBatches.length > 0 ? (
+              data.purchaseBatches.map(batch => {
                 const totalBatchQty = batch.items.reduce((sum, i) => sum + i.qty, 0);
                 const itemsSum = batch.items.reduce((sum, i) => sum + (i.qty * i.unit_price), 0);
                 const completeCost = itemsSum + batch.shipping_cost + batch.other_cost;
@@ -561,9 +561,9 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ db, addPurchaseBatch
                               </thead>
                               <tbody>
                                 {batch.items.map((item, idx) => {
-                                  const variant = db.variants.find(v => v.id === item.variant_id);
-                                  const model = variant ? db.models.find(m => m.id === variant.model_id) : null;
-                                  const brand = model ? db.brands.find(b => b.id === model.brand_id) : null;
+                                  const variant = data.variants.find(v => v.id === item.variant_id);
+                                  const model = variant ? data.models.find(m => m.id === variant.model_id) : null;
+                                  const brand = model ? data.brands.find(b => b.id === model.brand_id) : null;
 
                                   const overheadCalculated = (batch.shipping_cost + batch.other_cost) / totalBatchQty;
                                   const cost_loaded = item.unit_price + overheadCalculated;
@@ -611,9 +611,9 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ db, addPurchaseBatch
                           {/* Mobile View Card List */}
                           <div className="block md:hidden space-y-2">
                             {batch.items.map((item, idx) => {
-                              const variant = db.variants.find(v => v.id === item.variant_id);
-                              const model = variant ? db.models.find(m => m.id === variant.model_id) : null;
-                              const brand = model ? db.brands.find(b => b.id === model.brand_id) : null;
+                              const variant = data.variants.find(v => v.id === item.variant_id);
+                              const model = variant ? data.models.find(m => m.id === variant.model_id) : null;
+                              const brand = model ? data.brands.find(b => b.id === model.brand_id) : null;
 
                               const overheadCalculated = (batch.shipping_cost + batch.other_cost) / totalBatchQty;
                               const cost_loaded = item.unit_price + overheadCalculated;

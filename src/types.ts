@@ -96,8 +96,8 @@ export interface Delivery {
   status: DeliveryStatus;
 }
 
-// Full application database state stored in LocalStorage
-export interface AppDatabase {
+// Full application data state stored in LocalStorage
+export interface AppData {
   brands: Brand[];
   models: Model[];
   variants: Variant[];

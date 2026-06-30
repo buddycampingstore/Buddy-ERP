@@ -4,8 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { useDatabase } from './hooks/useDatabase';
-import { useSupabase } from './hooks/useSupabase';
+import { useAppData } from './hooks/useAppData';
 import { DashboardView } from './components/DashboardView';
 import { ProductsView } from './components/ProductsView';
 import { PurchaseView } from './components/PurchaseView';
@@ -25,20 +24,14 @@ import {
   X,
   FileDown,
   FileUp,
-  RotateCcw,
-  Database,
-  CloudUpload,
-  CloudDownload,
-  RefreshCw,
-  Copy,
-  Check
+  RotateCcw
 } from 'lucide-react';
 
 type TabType = 'dashboard' | 'products' | 'purchase' | 'orders' | 'deliveries' | 'reports' | 'backup';
 
 export default function App() {
   const {
-    db,
+    data,
     addBrand,
     updateBrand,
     deleteBrand,
@@ -56,95 +49,18 @@ export default function App() {
     deleteOrder,
     updateDelivery,
     importBackup,
-    resetDatabase,
-    clearDatabase,
-    setDb
-  } = useDatabase();
-
-  const {
-    url: supabaseUrl,
-    anonKey: supabaseAnonKey,
-    tableName: supabaseTableName,
-    rowId: supabaseRowId,
-    autoSync: supabaseAutoSync,
-    setAutoSync: setSupabaseAutoSync,
-    status: supabaseStatus,
-    errorMsg: supabaseErrorMsg,
-    lastSynced: supabaseLastSynced,
-    isPushing: supabaseIsPushing,
-    isPulling: supabaseIsPulling,
-    hasLoadedRemote: supabaseHasLoadedRemote,
-    pushToSupabase,
-    pullFromSupabase
-  } = useSupabase(db, setDb);
+    clearData
+  } = useAppData();
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // --- BACKUP PANEL STATE ---
   const [backupInput, setBackupInput] = useState('');
-  const [copiedSql, setCopiedSql] = useState(false);
-  const safeSupabaseTableName = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(supabaseTableName) ? supabaseTableName : 'buddy_erp_backoffice';
-  const sqlCode = `create table if not exists public.${safeSupabaseTableName} (
-  id text primary key,
-  data jsonb not null,
-  updated_at timestamptz not null default timezone('utc'::text, now())
-);
-
-create index if not exists ${safeSupabaseTableName}_updated_at_idx
-  on public.${safeSupabaseTableName} (updated_at desc);
-
-create index if not exists ${safeSupabaseTableName}_data_gin_idx
-  on public.${safeSupabaseTableName} using gin (data);
-
-alter table public.${safeSupabaseTableName} enable row level security;
-
-drop policy if exists "${safeSupabaseTableName}_app_read" on public.${safeSupabaseTableName};
-create policy "${safeSupabaseTableName}_app_read"
-  on public.${safeSupabaseTableName}
-  for select
-  to anon, authenticated
-  using (true);
-
-drop policy if exists "${safeSupabaseTableName}_app_write" on public.${safeSupabaseTableName};
-create policy "${safeSupabaseTableName}_app_write"
-  on public.${safeSupabaseTableName}
-  for all
-  to anon, authenticated
-  using (true)
-  with check (true);`;
-
-  const handleCopySql = () => {
-    navigator.clipboard.writeText(sqlCode);
-    setCopiedSql(true);
-    setTimeout(() => setCopiedSql(false), 2000);
-  };
-
-  const handlePushSupabase = async () => {
-    const res = await pushToSupabase(db);
-    if (res.success) {
-      alert('อัปโหลดข้อมูลขึ้น Supabase สำเร็จ');
-    } else {
-      alert(`อัปโหลดไม่สำเร็จ: ${res.error}`);
-    }
-  };
-
-  const handlePullSupabase = async () => {
-    if (!window.confirm('ต้องการดึงข้อมูลจาก Supabase มาแทนข้อมูลในเครื่องนี้หรือไม่?')) {
-      return;
-    }
-    const res = await pullFromSupabase();
-    if (res.success) {
-      alert('ดึงข้อมูลจาก Supabase สำเร็จ');
-      setActiveTab('dashboard');
-    } else {
-      alert(`ดึงข้อมูลไม่สำเร็จ: ${res.error}`);
-    }
-  };
 
   // Export JSON file download
   const handleDownloadBackup = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute("href", dataStr);
     downloadAnchor.setAttribute("download", `buddy_erp_backup_${new Date().toISOString().split('T')[0]}.json`);
@@ -187,22 +103,14 @@ create policy "${safeSupabaseTableName}_app_write"
     fileReader.readAsText(file);
   };
 
-  const handleResetToDefaults = () => {
-    if (window.confirm('⚠️ คำเตือน! การดำเนินการนี้จะล้างข้อมูลในเครื่องนี้ทั้งหมด และตั้งฐานข้อมูลกลับเป็นฐานว่าง ยืนยันที่จะล้างข้อมูลหรือไม่?')) {
-      resetDatabase();
-      alert('ล้างข้อมูลในเครื่องเรียบร้อยแล้ว ฐานข้อมูลปัจจุบันว่างเปล่า');
-      setActiveTab('dashboard');
-    }
-  };
-
   const handleClearAllSystemData = () => {
     const password = window.prompt('⚠️ คำเตือนร้ายแรง! การดำเนินการนี้จะลบสินค้า ออเดอร์ ลูกค้า และข้อมูลสต็อกทั้งหมดออกจากระบบแบบถาวร\n\nกรุณากรอกรหัสผ่านความปลอดภัย (รหัสผ่านคือ: buddy99) เพื่อยืนยัน:');
     if (password === null) {
       return; // Cancelled
     }
     if (password.trim() === 'buddy99' || password.trim() === '9999' || password.trim() === 'buddy') {
-      clearDatabase();
-      alert('ระบบทำการลบข้อมูลทั้งหมดเรียบร้อยแล้ว ปัจจุบันฐานข้อมูลว่างเปล่าสมบูรณ์!');
+      clearData();
+      alert('ระบบทำการลบข้อมูลทั้งหมดเรียบร้อยแล้ว ปัจจุบันข้อมูลว่างเปล่าสมบูรณ์!');
       setActiveTab('dashboard');
     } else {
       alert('❌ รหัสผ่านไม่ถูกต้อง! ไม่สามารถลบข้อมูลระบบได้');
@@ -223,11 +131,11 @@ create policy "${safeSupabaseTableName}_app_write"
   const renderActiveView = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardView db={db} onNavigate={(tab) => setActiveTab(tab as TabType)} />;
+        return <DashboardView data={data} onNavigate={(tab) => setActiveTab(tab as TabType)} />;
       case 'products':
         return (
           <ProductsView
-            db={db}
+            data={data}
             addBrand={addBrand}
             updateBrand={updateBrand}
             deleteBrand={deleteBrand}
@@ -240,20 +148,20 @@ create policy "${safeSupabaseTableName}_app_write"
           />
         );
       case 'purchase':
-        return <PurchaseView db={db} addPurchaseBatch={addPurchaseBatch} />;
+        return <PurchaseView data={data} addPurchaseBatch={addPurchaseBatch} />;
       case 'orders':
         return (
           <OrdersView
-            db={db}
+            data={data}
             createOrder={createOrder}
             updateOrderStatus={updateOrderStatus}
             deleteOrder={deleteOrder}
           />
         );
       case 'deliveries':
-        return <DeliveriesView db={db} updateDelivery={updateDelivery} />;
+        return <DeliveriesView data={data} updateDelivery={updateDelivery} />;
       case 'reports':
-        return <ReportsView db={db} />;
+        return <ReportsView data={data} />;
       case 'backup':
         return (
           <div className="space-y-6" id="settings-view">
@@ -268,10 +176,10 @@ create policy "${safeSupabaseTableName}_app_write"
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
                 <h3 className="font-bold text-slate-700 text-sm flex items-center gap-1.5 border-b border-slate-50 pb-2">
                   <FileDown className="w-4.5 h-4.5 text-emerald-700" />
-                  ส่งออกข้อมูลสํารอง (Export Database)
+                  ส่งออกข้อมูลสํารอง (Export Data)
                 </h3>
                 <p className="text-slate-500 text-xs leading-relaxed">
-                  ดาวน์โหลดฐานข้อมูลและข้อมูลหลักของร้านค้าปัจจุบัน (แบรนด์, ล็อตนำเข้า, รายลูกค้า, และออเดอร์ทั้งหมด) เก็บไว้เป็นไฟล์ .json มีฟังก์ชันย้ายระบบ ย้ายโน้ตบุ๊ก ปล่อยเครื่องได้ปลอดภัย
+                  ดาวน์โหลดข้อมูลและข้อมูลหลักของร้านค้าปัจจุบัน (แบรนด์, ล็อตนำเข้า, รายลูกค้า, และออเดอร์ทั้งหมด) เก็บไว้เป็นไฟล์ .json มีฟังก์ชันย้ายระบบ ย้ายโน้ตบุ๊ก ปล่อยเครื่องได้ปลอดภัย
                 </p>
                 <div className="pt-2">
                   <button
@@ -287,10 +195,10 @@ create policy "${safeSupabaseTableName}_app_write"
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
                 <h3 className="font-bold text-slate-700 text-sm flex items-center gap-1.5 border-b border-slate-50 pb-2">
                   <FileUp className="w-4.5 h-4.5 text-emerald-500" />
-                  นำเข้ากู้คืนข้อมูล (Import Database)
+                  นำเข้ากู้คืนข้อมูล (Import Data)
                 </h3>
                 <p className="text-slate-500 text-xs">
-                  เลือกไฟล์สำรองนามสกุล .json ของแผงควบคุมนี้ เพื่อดึงฐานข้อมูลกลับมาอย่างรวดเร็ว
+                  เลือกไฟล์สำรองนามสกุล .json ของแผงควบคุมนี้ เพื่อดึงข้อมูลกลับมาอย่างรวดเร็ว
                 </p>
                 
                 {/* Upload Trigger button */}
@@ -330,130 +238,15 @@ create policy "${safeSupabaseTableName}_app_write"
                 </form>
               </div>
 
-              {/* Supabase Sync Panel */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-5 md:col-span-2">
-                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 border-b border-slate-50 pb-3">
-                  <div>
-                    <h3 className="font-bold text-slate-700 text-sm flex items-center gap-1.5">
-                      <Database className="w-4.5 h-4.5 text-emerald-700" />
-                      เชื่อมต่อ Supabase Cloud Sync
-                    </h3>
-                    <p className="text-slate-500 text-xs mt-1">
-                      ใช้ตาราง {safeSupabaseTableName} เพื่อสำรองและซิงค์ข้อมูลร้านระหว่างอุปกรณ์
-                    </p>
-                  </div>
-                  <div className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold border self-start ${
-                    supabaseStatus === 'connected'
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : supabaseStatus === 'connecting'
-                        ? 'bg-amber-50 text-amber-700 border-amber-200'
-                        : supabaseStatus === 'error'
-                          ? 'bg-rose-50 text-rose-700 border-rose-200'
-                          : 'bg-slate-50 text-slate-500 border-slate-200'
-                  }`}>
-                    {supabaseStatus === 'connected'
-                      ? 'เชื่อมต่อแล้ว'
-                      : supabaseStatus === 'connecting'
-                        ? 'กำลังเชื่อมต่อ'
-                        : supabaseStatus === 'error'
-                          ? 'เชื่อมต่อขัดข้อง'
-                          : 'ยังไม่เชื่อมต่อ'}
-                  </div>
-                </div>
-
-                {supabaseErrorMsg && (
-                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-                    {supabaseErrorMsg}
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Supabase Project</p>
-                    <p className="text-xs text-slate-700 font-mono truncate mt-1" title={supabaseUrl || 'ยังไม่ได้ตั้งค่า VITE_SUPABASE_URL'}>
-                      {supabaseUrl || 'ยังไม่ได้ตั้งค่า VITE_SUPABASE_URL'}
-                    </p>
-                  </div>
-
-                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Anon Key</p>
-                    <p className={`text-xs font-semibold mt-1 ${supabaseAnonKey ? 'text-emerald-700' : 'text-rose-600'}`}>
-                      {supabaseAnonKey ? 'โหลดจาก .env.local แล้ว' : 'ยังไม่ได้ตั้งค่า VITE_SUPABASE_ANON_KEY'}
-                    </p>
-                  </div>
-
-                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Supabase Table</p>
-                    <p className="text-xs text-slate-700 font-mono truncate mt-1">{supabaseTableName}</p>
-                  </div>
-
-                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Sync Row ID</p>
-                    <p className="text-xs text-slate-700 font-mono truncate mt-1">{supabaseRowId}</p>
-                  </div>
-
-                  <div className="md:col-span-2 flex items-center justify-between gap-3">
-                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer pb-2.5">
-                      <input
-                        type="checkbox"
-                        checked={supabaseAutoSync}
-                        onChange={(e) => setSupabaseAutoSync(e.target.checked)}
-                        className="w-4 h-4 accent-emerald-700"
-                      />
-                      Auto sync เมื่อข้อมูลเปลี่ยน
-                    </label>
-                  </div>
-                </div>
-
-                <div className="flex flex-col lg:flex-row gap-3 justify-between border-t border-slate-100 pt-4">
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <button
-                      type="button"
-                      onClick={handlePushSupabase}
-                      disabled={supabaseStatus !== 'connected' || supabaseIsPushing}
-                      className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                    >
-                      {supabaseIsPushing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />}
-                      อัปโหลดข้อมูลขึ้น Supabase
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handlePullSupabase}
-                      disabled={supabaseStatus !== 'connected' || supabaseIsPulling}
-                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                    >
-                      {supabaseIsPulling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CloudDownload className="w-4 h-4" />}
-                      ดึงข้อมูลจาก Supabase
-                    </button>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-                    {supabaseLastSynced && (
-                      <span className="text-[10px] text-slate-400 sm:order-first">
-                        ซิงค์ล่าสุด: {supabaseLastSynced}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={handleCopySql}
-                      className="bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      {copiedSql ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                      {copiedSql ? 'คัดลอก SQL แล้ว' : 'คัดลอก SQL สร้างตาราง'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
               {/* Advanced Administration Reset Panel */}
               <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs space-y-4 md:col-span-2">
                 <h3 className="font-bold text-rose-600 text-sm flex items-center gap-1.5 border-b border-rose-50 pb-2">
                   <RotateCcw className="w-4.5 h-4.5 text-rose-500" />
-                  ลบทำความสะอาดข้อมูลระบบทั้งหมด (Clear Database)
+                  ลบทำความสะอาดข้อมูลระบบทั้งหมด (Clear Data)
                 </h3>
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-xs text-slate-500">
                   <p className="max-w-xl leading-relaxed">
-                    ฟังก์ชันนี้จะทำการลบฐานข้อมูลการขาย ออเดอร์ แบรนด์ รุ่น คลังสินค้า ยอด WAC และรายการลูกค้าทั้งหมดออกจากระบบอย่างถาวรทันทีแบบไม่มีข้อมูลใดๆ หลงเหลืออยู่
+                    ฟังก์ชันนี้จะทำการลบข้อมูลการขาย ออเดอร์ แบรนด์ รุ่น คลังสินค้า ยอด WAC และรายการลูกค้าทั้งหมดออกจากระบบอย่างถาวรทันทีแบบไม่มีข้อมูลใดๆ หลงเหลืออยู่
                   </p>
                   <button
                     type="button"
@@ -473,78 +266,6 @@ create policy "${safeSupabaseTableName}_app_write"
     }
   };
 
-  if (supabaseStatus !== 'connected' || !supabaseHasLoadedRemote) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 font-sans">
-        <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-5">
-          <div className="flex items-start gap-3">
-            <div className="w-11 h-11 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0">
-              {supabaseStatus === 'connecting' ? (
-                <RefreshCw className="w-5 h-5 text-emerald-400 animate-spin" />
-              ) : (
-                <Database className="w-5 h-5 text-emerald-400" />
-              )}
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-lg font-bold tracking-tight">ต้องเชื่อมต่อ Supabase SQL ก่อนใช้งาน</h1>
-              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                ระบบนี้ใช้ SQL เป็นแหล่งข้อมูลหลักเท่านั้น จึงจะไม่เปิดหน้า ERP จนกว่าจะอ่านตารางและ row ใน Supabase สำเร็จ
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div className="rounded-xl bg-slate-950 border border-slate-800 p-3">
-              <p className="text-slate-500 font-bold uppercase text-[10px]">Project URL</p>
-              <p className="font-mono text-slate-200 truncate mt-1" title={supabaseUrl || 'ยังไม่ได้ตั้งค่า'}>
-                {supabaseUrl || 'ยังไม่ได้ตั้งค่า VITE_SUPABASE_URL'}
-              </p>
-            </div>
-            <div className="rounded-xl bg-slate-950 border border-slate-800 p-3">
-              <p className="text-slate-500 font-bold uppercase text-[10px]">Anon Key</p>
-              <p className={supabaseAnonKey ? 'text-emerald-400 font-semibold mt-1' : 'text-rose-400 font-semibold mt-1'}>
-                {supabaseAnonKey ? 'โหลดจาก .env.local แล้ว' : 'ยังไม่ได้ตั้งค่า VITE_SUPABASE_ANON_KEY'}
-              </p>
-            </div>
-            <div className="rounded-xl bg-slate-950 border border-slate-800 p-3">
-              <p className="text-slate-500 font-bold uppercase text-[10px]">Table</p>
-              <p className="font-mono text-slate-200 truncate mt-1">{supabaseTableName}</p>
-            </div>
-            <div className="rounded-xl bg-slate-950 border border-slate-800 p-3">
-              <p className="text-slate-500 font-bold uppercase text-[10px]">Row ID</p>
-              <p className="font-mono text-slate-200 truncate mt-1">{supabaseRowId}</p>
-            </div>
-          </div>
-
-          {supabaseErrorMsg && (
-            <div className="rounded-xl bg-rose-950/40 border border-rose-800 text-rose-200 text-xs p-3 leading-relaxed">
-              {supabaseErrorMsg}
-            </div>
-          )}
-
-          <div className="flex flex-col sm:flex-row gap-2">
-            <button
-              type="button"
-              onClick={handleCopySql}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-            >
-              {copiedSql ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              {copiedSql ? 'คัดลอก SQL แล้ว' : 'คัดลอก SQL สำหรับสร้างตาราง'}
-            </button>
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <RefreshCw className="w-4 h-4" />
-              โหลดใหม่
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col md:flex-row font-sans" id="app-viewport">
       
@@ -561,57 +282,6 @@ create policy "${safeSupabaseTableName}_app_write"
               <h2 className="font-bold text-slate-900 text-sm tracking-tight leading-none uppercase">Buddy Camping</h2>
               <span className="text-[9px] text-emerald-700 font-extrabold tracking-widest block mt-1.5 uppercase">Store. ERP</span>
             </div>
-          </div>
-          
-          {/* Supabase Status Pill */}
-          <div className="mt-3.5">
-            {supabaseStatus === 'connected' ? (
-              <button
-                onClick={() => setActiveTab('backup')}
-                className="w-full flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-all text-left cursor-pointer"
-                title="เชื่อมต่อฐานข้อมูลคลาวด์แล้ว คลิกเพื่อดูข้อมูลสำรอง"
-              >
-                <span className="flex items-center gap-1.5 min-w-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                  <span className="truncate">Supabase ซิงค์ออนไลน์</span>
-                </span>
-                <Database className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              </button>
-            ) : supabaseStatus === 'connecting' ? (
-              <button
-                onClick={() => setActiveTab('backup')}
-                className="w-full flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 transition-all text-left cursor-pointer"
-              >
-                <span className="flex items-center gap-1.5 min-w-0">
-                  <RefreshCw className="w-3 h-3 animate-spin text-amber-500 shrink-0" />
-                  <span className="truncate">กำลังเชื่อมต่อ...</span>
-                </span>
-              </button>
-            ) : supabaseStatus === 'error' ? (
-              <button
-                onClick={() => setActiveTab('backup')}
-                className="w-full flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition-all text-left cursor-pointer"
-                title="เชื่อมต่อล้มเหลว คลิกเพื่อแก้ไขค่าเชื่อมต่อ"
-              >
-                <span className="flex items-center gap-1.5 min-w-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
-                  <span className="truncate">การเชื่อมต่อขัดข้อง</span>
-                </span>
-                <Database className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-              </button>
-            ) : (
-              <button
-                onClick={() => setActiveTab('backup')}
-                className="w-full flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-slate-50 text-slate-500 hover:bg-slate-100 border border-slate-200 transition-all text-left cursor-pointer"
-                title="ยังไม่ได้กำหนดค่าเชื่อมต่อ คลิกเพื่อตั้งค่าซิงค์คลาวด์"
-              >
-                <span className="flex items-center gap-1.5 min-w-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
-                  <span className="truncate">ไม่พบการซิงค์ออนไลน์</span>
-                </span>
-                <Database className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              </button>
-            )}
           </div>
         </div>
 
@@ -663,37 +333,8 @@ create policy "${safeSupabaseTableName}_app_write"
           <span className="font-extrabold text-sm uppercase tracking-tight text-slate-950 truncate">Buddy Camping ERP</span>
         </div>
         
-        {/* Connection status and Hamburger */}
+        {/* Hamburger */}
         <div className="flex items-center gap-3 shrink-0">
-          {/* Mobile Supabase Connection Indicator */}
-          <button
-            onClick={() => setActiveTab('backup')}
-            className="flex items-center justify-center cursor-pointer transition-transform active:scale-95"
-            title="ตั้งค่า/ดูสถานะซิงค์ข้อมูล Supabase"
-          >
-            {supabaseStatus === 'connected' ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
-                ซิงค์แล้ว
-              </span>
-            ) : supabaseStatus === 'connecting' ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200">
-                <RefreshCw className="w-2.5 h-2.5 animate-spin text-amber-500" />
-                ซิงค์...
-              </span>
-            ) : supabaseStatus === 'error' ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200">
-                <span className="w-1 h-1 rounded-full bg-rose-500" />
-                ขัดข้อง
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-50 text-slate-500 border border-slate-200">
-                <span className="w-1 h-1 rounded-full bg-slate-400" />
-                ออฟไลน์
-              </span>
-            )}
-          </button>
-
           <button 
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="p-1 text-slate-500 hover:text-slate-900"
