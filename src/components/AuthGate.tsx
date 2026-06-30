@@ -1,7 +1,8 @@
 import React from 'react';
 import { Session } from '@supabase/supabase-js';
-import { LogIn, ShieldCheck } from 'lucide-react';
+import { LogIn } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import logoImg from '../assets/images/logo_1782269852938.jpg';
 
 interface AuthGateProps {
   children: React.ReactNode;
@@ -77,8 +78,8 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <form onSubmit={handleLogin} className="w-full max-w-sm bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-5">
           <div className="space-y-2">
-            <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
-              <ShieldCheck className="w-5 h-5" />
+            <div className="w-11 h-11 rounded-xl overflow-hidden border border-slate-200 bg-white flex items-center justify-center">
+              <img src={logoImg} alt="Buddy ERP Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             </div>
             <div>
               <h1 className="text-xl font-bold text-slate-900">Buddy ERP Login</h1>
