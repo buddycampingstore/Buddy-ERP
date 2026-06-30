@@ -1,0 +1,140 @@
+import React from 'react';
+import { Session } from '@supabase/supabase-js';
+import { LogIn, LogOut, ShieldCheck } from 'lucide-react';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
+
+interface AuthGateProps {
+  children: React.ReactNode;
+}
+
+export const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
+  const [session, setSession] = React.useState<Session | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [email, setEmail] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [authError, setAuthError] = React.useState<string | null>(null);
+  const [submitting, setSubmitting] = React.useState(false);
+
+  React.useEffect(() => {
+    let mounted = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data.session);
+      setLoading(false);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setLoading(false);
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  const handleLogin = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setAuthError(null);
+    setSubmitting(true);
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password
+    });
+
+    if (error) {
+      setAuthError(error.message);
+    }
+    setSubmitting(false);
+  };
+
+  if (!isSupabaseConfigured) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="w-full max-w-md bg-white border border-amber-200 rounded-xl p-6 shadow-sm space-y-3">
+          <h1 className="text-lg font-bold text-slate-900">Supabase ยังไม่ได้ตั้งค่า</h1>
+          <p className="text-sm text-slate-600">
+            กรุณาเพิ่ม `VITE_SUPABASE_URL` และ `VITE_SUPABASE_ANON_KEY` ใน local `.env` และ Vercel Environment Variables
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm font-semibold text-slate-600">
+        กำลังตรวจสอบสถานะเข้าสู่ระบบ...
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <form onSubmit={handleLogin} className="w-full max-w-sm bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-5">
+          <div className="space-y-2">
+            <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-slate-900">Buddy ERP Login</h1>
+              <p className="text-xs text-slate-500">เข้าสู่ระบบเพื่อจัดการคลังและออเดอร์ของร้าน</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <input
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="Email"
+              className="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:border-emerald-700"
+            />
+            <input
+              type="password"
+              required
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Password"
+              className="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:border-emerald-700"
+            />
+          </div>
+
+          {authError && (
+            <p className="text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-lg p-3">{authError}</p>
+          )}
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 text-white text-sm font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors"
+          >
+            <LogIn className="w-4 h-4" />
+            {submitting ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => supabase.auth.signOut()}
+        className="fixed top-3 right-3 z-50 bg-white border border-slate-200 shadow-sm text-slate-600 hover:text-rose-600 text-xs font-semibold rounded-lg px-3 py-2 flex items-center gap-1.5"
+      >
+        <LogOut className="w-3.5 h-3.5" />
+        Logout
+      </button>
+      {children}
+    </>
+  );
+};

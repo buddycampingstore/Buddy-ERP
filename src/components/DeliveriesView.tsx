@@ -24,7 +24,7 @@ import {
 
 interface DeliveriesViewProps {
   data: AppData;
-  updateDelivery: (orderId: string, updates: Partial<Delivery>) => void;
+  updateDelivery: (orderId: string, updates: Partial<Delivery>) => Promise<void>;
 }
 
 export const DeliveriesView: React.FC<DeliveriesViewProps> = ({ data, updateDelivery }) => {
@@ -44,14 +44,18 @@ export const DeliveriesView: React.FC<DeliveriesViewProps> = ({ data, updateDeli
     setDeliveryStatus(del.status);
   };
 
-  const handleSaveDeliveryInfo = (orderId: string) => {
-    updateDelivery(orderId, {
-      tracking: trackingNo,
-      pickup_datetime: pickupDate,
-      status: deliveryStatus
-    });
-    setEditingOrderId(null);
-    alert('อัปเดตข้อมูลการจัดส่งและติดตามพัสดุเรียบร้อย!');
+  const handleSaveDeliveryInfo = async (orderId: string) => {
+    try {
+      await updateDelivery(orderId, {
+        tracking: trackingNo,
+        pickup_datetime: pickupDate,
+        status: deliveryStatus
+      });
+      setEditingOrderId(null);
+      alert('อัปเดตข้อมูลการจัดส่งและติดตามพัสดุเรียบร้อย!');
+    } catch (err: any) {
+      alert(`อัปเดตการจัดส่งไม่สำเร็จ: ${err.message || err}`);
+    }
   };
 
   const filteredDeliveries = data.deliveries.filter(del => {

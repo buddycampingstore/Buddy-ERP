@@ -49,7 +49,9 @@ export default function App() {
     deleteOrder,
     updateDelivery,
     importBackup,
-    clearData
+    clearData,
+    loading,
+    error
   } = useAppData();
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -70,10 +72,10 @@ export default function App() {
     alert('ส่งออกไฟล์สํารองข้อมูล JSON เรียบร้อย!');
   };
 
-  const handleImportBackup = (e: React.FormEvent) => {
+  const handleImportBackup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!backupInput.trim()) return;
-    const res = importBackup(backupInput);
+    const res = await importBackup(backupInput);
     if (res.success) {
       alert('นำเข้าสำรองข้อมูลสำเร็จ คลังได้รับการกู้คืนเรียบร้อย!');
       setBackupInput('');
@@ -88,10 +90,10 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    fileReader.onload = (event) => {
+    fileReader.onload = async (event) => {
       const text = event.target?.result as string;
       if (text) {
-        const res = importBackup(text);
+        const res = await importBackup(text);
         if (res.success) {
           alert('นำเข้าไฟล์สำรองข้อมูล JSON สำเร็จ คลังพร้อมขายทันที!');
           setActiveTab('dashboard');
@@ -103,19 +105,38 @@ export default function App() {
     fileReader.readAsText(file);
   };
 
-  const handleClearAllSystemData = () => {
+  const handleClearAllSystemData = async () => {
     const password = window.prompt('⚠️ คำเตือนร้ายแรง! การดำเนินการนี้จะลบสินค้า ออเดอร์ ลูกค้า และข้อมูลสต็อกทั้งหมดออกจากระบบแบบถาวร\n\nกรุณากรอกรหัสผ่านความปลอดภัย (รหัสผ่านคือ: buddy99) เพื่อยืนยัน:');
     if (password === null) {
       return; // Cancelled
     }
     if (password.trim() === 'buddy99' || password.trim() === '9999' || password.trim() === 'buddy') {
-      clearData();
+      await clearData();
       alert('ระบบทำการลบข้อมูลทั้งหมดเรียบร้อยแล้ว ปัจจุบันข้อมูลว่างเปล่าสมบูรณ์!');
       setActiveTab('dashboard');
     } else {
       alert('❌ รหัสผ่านไม่ถูกต้อง! ไม่สามารถลบข้อมูลระบบได้');
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm font-semibold text-slate-600">
+        กำลังโหลดข้อมูลจาก Supabase...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="max-w-md bg-white border border-rose-100 rounded-xl p-6 shadow-sm space-y-3">
+          <h1 className="text-lg font-bold text-rose-600">โหลดข้อมูลไม่สำเร็จ</h1>
+          <p className="text-sm text-slate-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   // Tab configurations
   const menuItems = [

@@ -32,7 +32,7 @@ interface PurchaseViewProps {
     other_cost: number,
     items: { variant_id: string; qty: number; unit_price: number }[],
     note?: string
-  ) => string | null;
+  ) => Promise<string | null>;
 }
 
 interface NewBatchItem {
@@ -86,24 +86,28 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
     }));
   };
 
-  const handleSaveBatch = (e: React.FormEvent) => {
+  const handleSaveBatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (items.some(item => !item.variant_id || item.qty <= 0 || item.unit_price < 0)) {
       alert('กรุณากรอกข้อมูลรายการสินค้าให้ถูกต้อง (จำนวนต้องมากกว่า 0 และราคาต้นทุนห้ามติดลบ)');
       return;
     }
 
-    const batchId = addPurchaseBatch(date, shippingCost, otherCost, items, note);
-    if (batchId) {
-      alert('บันทึกการรับเข้าเสร็จสิ้น ระบบคำนวณต้นทุนเฉลี่ยเคลื่อนที่ (WAC) และสต็อกพร้อมขายเรียบร้อย!');
-      setIsAdding(false);
-      // Reset form
-      const today = new Date().toISOString().split('T')[0];
-      setDate(today);
-      setShippingCost(0);
-      setOtherCost(0);
-      setNote('');
-      setItems([{ variant_id: data.variants[0]?.id || '', qty: 5, unit_price: 1500 }]);
+    try {
+      const batchId = await addPurchaseBatch(date, shippingCost, otherCost, items, note);
+      if (batchId) {
+        alert('บันทึกการรับเข้าเสร็จสิ้น ระบบคำนวณต้นทุนเฉลี่ยเคลื่อนที่ (WAC) และสต็อกพร้อมขายเรียบร้อย!');
+        setIsAdding(false);
+        // Reset form
+        const today = new Date().toISOString().split('T')[0];
+        setDate(today);
+        setShippingCost(0);
+        setOtherCost(0);
+        setNote('');
+        setItems([{ variant_id: data.variants[0]?.id || '', qty: 5, unit_price: 1500 }]);
+      }
+    } catch (err: any) {
+      alert(`บันทึกรับเข้าไม่สำเร็จ: ${err.message || err}`);
     }
   };
 

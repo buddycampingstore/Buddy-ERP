@@ -3,23 +3,24 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
-import { 
-  AppData, 
-  Brand, 
-  Model, 
-  Variant, 
-  PurchaseBatch, 
-  StockItem, 
-  Customer, 
-  Order, 
-  Delivery, 
-  OrderItem, 
-  OrderStatus, 
-  OrderChannel, 
-  DeliveryType, 
-  DeliveryStatus 
+import { useCallback, useEffect, useState } from 'react';
+import {
+  AppData,
+  Brand,
+  Customer,
+  Delivery,
+  DeliveryStatus,
+  DeliveryType,
+  Model,
+  Order,
+  OrderChannel,
+  OrderItem,
+  OrderStatus,
+  PurchaseBatch,
+  StockItem,
+  Variant
 } from '../types';
+import { supabase } from '../lib/supabase';
 
 const EMPTY_DATA: AppData = {
   brands: [],
@@ -32,243 +33,322 @@ const EMPTY_DATA: AppData = {
   deliveries: []
 };
 
+type DbPurchaseBatchItem = {
+  variant_id: string;
+  qty: number;
+  unit_price: number;
+};
+
+type DbOrderItem = OrderItem & {
+  order_id: string;
+};
+
+const assertNoError = (error: { message: string } | null) => {
+  if (error) {
+    throw new Error(error.message);
+  }
+};
+
+const sortByDateDesc = <T extends { date: string; id: string }>(items: T[]) => {
+  return [...items].sort((a, b) => {
+    const dateCompare = b.date.localeCompare(a.date);
+    return dateCompare !== 0 ? dateCompare : b.id.localeCompare(a.id);
+  });
+};
+
 export function useAppData() {
   const [data, setData] = useState<AppData>(EMPTY_DATA);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Recalculate variant quantities dynamically to ensure robustness
-  const syncVariantQuantities = (currentStockItems: StockItem[], currentVariants: Variant[]): Variant[] => {
-    return currentVariants.map(v => {
-      const activeStock = currentStockItems.filter(item => item.variant_id === v.id && item.status === 'in_stock');
-      return {
-        ...v,
-        qty_in_stock: activeStock.length
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const [
+        brandsRes,
+        modelsRes,
+        variantsRes,
+        purchaseBatchesRes,
+        purchaseBatchItemsRes,
+        stockItemsRes,
+        customersRes,
+        ordersRes,
+        orderItemsRes,
+        deliveriesRes
+      ] = await Promise.all([
+        supabase.from('brands').select('*').order('name'),
+        supabase.from('models').select('*').order('name'),
+        supabase.from('variants').select('*').order('color'),
+        supabase.from('purchase_batches').select('*').order('date', { ascending: false }),
+        supabase.from('purchase_batch_items').select('*'),
+        supabase.from('stock_items').select('*'),
+        supabase.from('customers').select('*').order('name'),
+        supabase.from('orders').select('*').order('date', { ascending: false }),
+        supabase.from('order_items').select('*'),
+        supabase.from('deliveries').select('*')
+      ]);
+
+      [
+        brandsRes,
+        modelsRes,
+        variantsRes,
+        purchaseBatchesRes,
+        purchaseBatchItemsRes,
+        stockItemsRes,
+        customersRes,
+        ordersRes,
+        orderItemsRes,
+        deliveriesRes
+      ].forEach((result) => assertNoError(result.error));
+
+      const purchaseItemsByBatch = new Map<string, DbPurchaseBatchItem[]>();
+      (purchaseBatchItemsRes.data || []).forEach((item: any) => {
+        const list = purchaseItemsByBatch.get(item.batch_id) || [];
+        list.push({
+          variant_id: item.variant_id,
+          qty: item.qty,
+          unit_price: Number(item.unit_price)
+        });
+        purchaseItemsByBatch.set(item.batch_id, list);
+      });
+
+      const orderItemsByOrder = new Map<string, OrderItem[]>();
+      (orderItemsRes.data || []).forEach((item: DbOrderItem) => {
+        const list = orderItemsByOrder.get(item.order_id) || [];
+        list.push({
+          id: item.id,
+          stock_item_id: item.stock_item_id,
+          variant_id: item.variant_id,
+          sale_price: Number(item.sale_price),
+          discount: Number(item.discount),
+          final_price: Number(item.final_price),
+          wac_at_sale: Number(item.wac_at_sale),
+          profit: Number(item.profit)
+        });
+        orderItemsByOrder.set(item.order_id, list);
+      });
+
+      const nextData: AppData = {
+        brands: (brandsRes.data || []).map((brand: Brand) => ({
+          id: brand.id,
+          name: brand.name
+        })),
+        models: (modelsRes.data || []).map((model: Model) => ({
+          id: model.id,
+          brand_id: model.brand_id,
+          name: model.name,
+          image: model.image || undefined
+        })),
+        variants: (variantsRes.data || []).map((variant: Variant) => ({
+          id: variant.id,
+          model_id: variant.model_id,
+          color: variant.color,
+          qty_in_stock: Number(variant.qty_in_stock || 0),
+          current_wac: Number(variant.current_wac || 0),
+          standard_sale_price: Number(variant.standard_sale_price || 0)
+        })),
+        purchaseBatches: sortByDateDesc((purchaseBatchesRes.data || []).map((batch: any) => ({
+          id: batch.id,
+          date: batch.date,
+          shipping_cost: Number(batch.shipping_cost || 0),
+          other_cost: Number(batch.other_cost || 0),
+          items: purchaseItemsByBatch.get(batch.id) || [],
+          note: batch.note || undefined
+        }))),
+        stockItems: (stockItemsRes.data || []).map((item: StockItem) => ({
+          id: item.id,
+          variant_id: item.variant_id,
+          wac_cost: Number(item.wac_cost),
+          status: item.status,
+          order_id: item.order_id || undefined,
+          batch_id: item.batch_id
+        })),
+        customers: (customersRes.data || []).map((customer: Customer) => ({
+          id: customer.id,
+          name: customer.name,
+          phone: customer.phone,
+          facebook: customer.facebook,
+          note: customer.note
+        })),
+        orders: sortByDateDesc((ordersRes.data || []).map((order: any) => ({
+          id: order.id,
+          customer_id: order.customer_id,
+          date: order.date,
+          channel: order.channel,
+          status: order.status,
+          delivery_type: order.delivery_type,
+          discount: Number(order.discount || 0),
+          items: orderItemsByOrder.get(order.id) || [],
+          shipping_fee: Number(order.shipping_fee || 0),
+          shipping_cost: Number(order.shipping_cost || 0)
+        }))),
+        deliveries: (deliveriesRes.data || []).map((delivery: Delivery) => ({
+          id: delivery.id,
+          order_id: delivery.order_id,
+          tracking: delivery.tracking,
+          pickup_datetime: delivery.pickup_datetime,
+          status: delivery.status
+        }))
       };
-    });
+
+      setData(nextData);
+    } catch (err: any) {
+      const message = err?.message || 'โหลดข้อมูลจาก Supabase ไม่สำเร็จ';
+      setError(message);
+      console.error(message, err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const refreshAfter = useCallback(async <T,>(operation: Promise<T>) => {
+    const result = await operation;
+    await loadData();
+    return result;
+  }, [loadData]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const addBrand = async (name: string) => {
+    const { data: created, error: insertError } = await supabase
+      .from('brands')
+      .insert({ name: name.trim() })
+      .select()
+      .single();
+    assertNoError(insertError);
+    await loadData();
+    return created as Brand;
   };
 
-  // --- BRANDS ---
-  const addBrand = (name: string) => {
-    const newBrand: Brand = {
-      id: `b-${Date.now()}`,
-      name: name.trim()
-    };
-    setData(prev => ({
-      ...prev,
-      brands: [...prev.brands, newBrand]
-    }));
-    return newBrand;
+  const updateBrand = async (id: string, name: string) => {
+    await refreshAfter(
+      supabase.from('brands').update({ name: name.trim() }).eq('id', id).then(({ error }) => assertNoError(error))
+    );
   };
 
-  const updateBrand = (id: string, name: string) => {
-    setData(prev => ({
-      ...prev,
-      brands: prev.brands.map(b => b.id === id ? { ...b, name: name.trim() } : b)
-    }));
+  const deleteBrand = async (id: string) => {
+    await refreshAfter(
+      supabase.from('brands').delete().eq('id', id).then(({ error }) => assertNoError(error))
+    );
   };
 
-  const deleteBrand = (id: string) => {
-    setData(prev => {
-      // Also delete models under this brand, and prevent breaking variants if they exist
-      const modelsToDelete = prev.models.filter(m => m.brand_id === id).map(m => m.id);
-      return {
-        ...prev,
-        brands: prev.brands.filter(b => b.id !== id),
-        models: prev.models.filter(m => m.brand_id !== id),
-        variants: prev.variants.filter(v => !modelsToDelete.includes(v.model_id))
-      };
-    });
+  const addModel = async (brand_id: string, name: string, image?: string) => {
+    const { data: created, error: insertError } = await supabase
+      .from('models')
+      .insert({ brand_id, name: name.trim(), image: image || null })
+      .select()
+      .single();
+    assertNoError(insertError);
+    await loadData();
+    return created as Model;
   };
 
-  // --- MODELS ---
-  const addModel = (brand_id: string, name: string, image?: string) => {
-    const newModel: Model = {
-      id: `m-${Date.now()}`,
-      brand_id,
-      name: name.trim(),
-      image
-    };
-    setData(prev => ({
-      ...prev,
-      models: [...prev.models, newModel]
-    }));
-    return newModel;
+  const updateModel = async (id: string, name: string, brand_id: string, image?: string) => {
+    await refreshAfter(
+      supabase
+        .from('models')
+        .update({ name: name.trim(), brand_id, image: image !== undefined ? image : null })
+        .eq('id', id)
+        .then(({ error }) => assertNoError(error))
+    );
   };
 
-  const updateModel = (id: string, name: string, brand_id: string, image?: string) => {
-    setData(prev => ({
-      ...prev,
-      models: prev.models.map(m => m.id === id ? { ...m, name: name.trim(), brand_id, image: image !== undefined ? image : m.image } : m)
-    }));
+  const deleteModel = async (id: string) => {
+    await refreshAfter(
+      supabase.from('models').delete().eq('id', id).then(({ error }) => assertNoError(error))
+    );
   };
 
-  const deleteModel = (id: string) => {
-    setData(prev => ({
-      ...prev,
-      models: prev.models.filter(m => m.id !== id),
-      variants: prev.variants.filter(v => v.model_id !== id)
-    }));
+  const addVariant = async (model_id: string, color: string, standard_sale_price?: number) => {
+    const { data: created, error: insertError } = await supabase
+      .from('variants')
+      .insert({
+        model_id,
+        color: color.trim(),
+        standard_sale_price: standard_sale_price || 0
+      })
+      .select()
+      .single();
+    assertNoError(insertError);
+    await loadData();
+    return created as Variant;
   };
 
-  // --- VARIANTS ---
-  const addVariant = (model_id: string, color: string, standard_sale_price?: number) => {
-    const newVariant: Variant = {
-      id: `v-${Date.now()}`,
-      model_id,
-      color: color.trim(),
-      qty_in_stock: 0,
-      current_wac: 0,
-      standard_sale_price: standard_sale_price !== undefined ? standard_sale_price : 0
-    };
-    setData(prev => ({
-      ...prev,
-      variants: [...prev.variants, newVariant]
-    }));
-    return newVariant;
+  const updateVariant = async (id: string, color: string, model_id: string, standard_sale_price?: number) => {
+    await refreshAfter(
+      supabase
+        .from('variants')
+        .update({
+          color: color.trim(),
+          model_id,
+          standard_sale_price: standard_sale_price || 0
+        })
+        .eq('id', id)
+        .then(({ error }) => assertNoError(error))
+    );
   };
 
-  const updateVariant = (id: string, color: string, model_id: string, standard_sale_price?: number) => {
-    setData(prev => ({
-      ...prev,
-      variants: prev.variants.map(v => v.id === id ? { 
-        ...v, 
-        color: color.trim(), 
-        model_id, 
-        standard_sale_price: standard_sale_price !== undefined ? standard_sale_price : v.standard_sale_price 
-      } : v)
-    }));
+  const deleteVariant = async (id: string) => {
+    await refreshAfter(
+      supabase.from('variants').delete().eq('id', id).then(({ error }) => assertNoError(error))
+    );
   };
 
-  const deleteVariant = (id: string) => {
-    setData(prev => ({
-      ...prev,
-      variants: prev.variants.filter(v => v.id !== id),
-      stockItems: prev.stockItems.filter(item => item.variant_id !== id)
-    }));
-  };
-
-  // --- PURCHASE BATCH & WAC CALCULATION ---
-  const addPurchaseBatch = (
+  const addPurchaseBatch = async (
     date: string,
     shipping_cost: number,
     other_cost: number,
     items: { variant_id: string; qty: number; unit_price: number }[],
     note?: string
   ) => {
-    const batchId = `pb-${Date.now()}`;
-    const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
-    
-    if (totalQty === 0) return null;
-
-    // cost_ใหม่/ตัว = (ราคาสินค้า + shipping + other) / จำนวนทั้งหมดใน batch
-    // To handle varying unit_prices correctly, we distribute the shipping+other cost proportionally to unit quantity:
-    // cost_ใหม่ per unit of item V = unit_price_V + (shipping_cost + other_cost) / total_qty
-    const overheadPerUnit = (shipping_cost + other_cost) / totalQty;
-
-    const newBatch: PurchaseBatch = {
-      id: batchId,
-      date,
-      shipping_cost,
-      other_cost,
-      items,
-      note: note?.trim()
-    };
-
-    setData(prev => {
-      const updatedVariants = [...prev.variants];
-      const newStockItems: StockItem[] = [];
-
-      items.forEach(batchItem => {
-        const variantIndex = updatedVariants.findIndex(v => v.id === batchItem.variant_id);
-        if (variantIndex !== -1) {
-          const variant = updatedVariants[variantIndex];
-
-          // 1. Calculate qty_เดิม (the count of currently in_stock stockItems for this variant)
-          const qty_เดิม = prev.stockItems.filter(
-            item => item.variant_id === variant.id && item.status === 'in_stock'
-          ).length;
-
-          // 2. WAC_เดิม
-          const WAC_เดิม = variant.current_wac;
-
-          // 3. cost_ใหม่ for this item
-          const cost_ใหม่ = batchItem.unit_price + overheadPerUnit;
-
-          // 4. Calculate WAC_ใหม่
-          // WAC ใหม่ = (qty_เดิม × WAC_เดิม + qty_ใหม่ × cost_ใหม่) / (qty_เดิม + qty_ใหม่)
-          const qty_ใหม่ = batchItem.qty;
-          let WAC_ใหม่ = cost_ใหม่;
-          if (qty_เดิม + qty_ใหม่ > 0) {
-            WAC_ใหม่ = (qty_เดิม * WAC_เดิม + qty_ใหม่ * cost_ใหม่) / (qty_เดิม + qty_ใหม่);
-          }
-
-          // Round WAC to 2 decimal places
-          WAC_ใหม่ = Math.round(WAC_ใหม่ * 100) / 100;
-
-          // Update variant info
-          updatedVariants[variantIndex] = {
-            ...variant,
-            current_wac: WAC_ใหม่,
-            qty_in_stock: qty_เดิม + qty_ใหม่
-          };
-
-          // Generate StockItem rows
-          for (let i = 0; i < qty_ใหม่; i++) {
-            newStockItems.push({
-              id: `st-${variant.id}-${Date.now()}-${i}`,
-              variant_id: variant.id,
-              wac_cost: WAC_ใหม่, // record computed WAC as its cost base
-              status: 'in_stock',
-              batch_id: batchId
-            });
-          }
-        }
-      });
-
-      const nextStockItems = [...prev.stockItems, ...newStockItems];
-      const nextVariants = syncVariantQuantities(nextStockItems, updatedVariants);
-
-      return {
-        ...prev,
-        purchaseBatches: [newBatch, ...prev.purchaseBatches],
-        stockItems: nextStockItems,
-        variants: nextVariants
-      };
+    const { data: batchId, error: rpcError } = await supabase.rpc('add_purchase_batch', {
+      p_date: date,
+      p_shipping_cost: shipping_cost,
+      p_other_cost: other_cost,
+      p_items: items,
+      p_note: note?.trim() || null
     });
-
-    return batchId;
+    assertNoError(rpcError);
+    await loadData();
+    return batchId as string | null;
   };
 
-  // --- CUSTOMERS ---
-  const addCustomer = (customerData: Omit<Customer, 'id'>) => {
-    const newCustomer: Customer = {
-      id: `c-${Date.now()}`,
-      name: customerData.name.trim(),
-      phone: customerData.phone.trim(),
-      facebook: customerData.facebook.trim(),
-      note: customerData.note.trim()
-    };
-    setData(prev => ({
-      ...prev,
-      customers: [...prev.customers, newCustomer]
-    }));
-    return newCustomer;
-  };
-
-  const updateCustomer = (id: string, customerData: Omit<Customer, 'id'>) => {
-    setData(prev => ({
-      ...prev,
-      customers: prev.customers.map(c => c.id === id ? {
-        ...c,
+  const addCustomer = async (customerData: Omit<Customer, 'id'>) => {
+    const { data: created, error: insertError } = await supabase
+      .from('customers')
+      .insert({
         name: customerData.name.trim(),
         phone: customerData.phone.trim(),
         facebook: customerData.facebook.trim(),
         note: customerData.note.trim()
-      } : c)
-    }));
+      })
+      .select()
+      .single();
+    assertNoError(insertError);
+    await loadData();
+    return created as Customer;
   };
 
-  // --- ORDERS, DELIVERIES & SHOT WAC_AT_SALE ---
-  const createOrder = (orderData: {
+  const updateCustomer = async (id: string, customerData: Omit<Customer, 'id'>) => {
+    await refreshAfter(
+      supabase
+        .from('customers')
+        .update({
+          name: customerData.name.trim(),
+          phone: customerData.phone.trim(),
+          facebook: customerData.facebook.trim(),
+          note: customerData.note.trim()
+        })
+        .eq('id', id)
+        .then(({ error }) => assertNoError(error))
+    );
+  };
+
+  const createOrder = async (orderData: {
     customer_id: string;
     date: string;
     channel: OrderChannel;
@@ -279,188 +359,39 @@ export function useAppData() {
     shipping_fee?: number;
     shipping_cost?: number;
   }) => {
-    const orderId = `ord-${Date.now()}`;
-    
-    // Validate if enough stock is available for each item
-    for (const orderItem of orderData.items) {
-      const activeStockCount = data.stockItems.filter(
-        item => item.variant_id === orderItem.variant_id && item.status === 'in_stock'
-      ).length;
-      if (activeStockCount < orderItem.qty) {
-        throw new Error(`สินค้าในสต็อกไม่เพียงพอสำหรับทำรายการนี้`);
-      }
-    }
-
-    setData(prev => {
-      const updatedStockItems = [...prev.stockItems];
-      const orderItemsList: OrderItem[] = [];
-
-      orderData.items.forEach((itemParam, index) => {
-        // Collect required qty of in_stock items of this variant
-        const availableItems = updatedStockItems.filter(
-          item => item.variant_id === itemParam.variant_id && item.status === 'in_stock'
-        );
-
-        const currentWac = prev.variants.find(v => v.id === itemParam.variant_id)?.current_wac || 0;
-
-        for (let i = 0; i < itemParam.qty; i++) {
-          const stockDoc = availableItems[i];
-          
-          // Update status of this specific StockItem
-          const stockIndex = updatedStockItems.findIndex(s => s.id === stockDoc.id);
-          if (stockIndex !== -1) {
-            updatedStockItems[stockIndex] = {
-              ...updatedStockItems[stockIndex],
-              status: 'sold',
-              order_id: orderId
-            };
-
-            // Calculate profit based on snapshotted WAC at the moment of sale
-            const final_price = itemParam.sale_price - itemParam.discount;
-            const profit = final_price - currentWac;
-
-            orderItemsList.push({
-              id: `oi-${orderId}-${index}-${i}`,
-              stock_item_id: stockDoc.id,
-              variant_id: itemParam.variant_id,
-              sale_price: itemParam.sale_price,
-              discount: itemParam.discount,
-              final_price,
-              wac_at_sale: currentWac, // Snapshot cost base (CRITICAL)
-              profit: Math.round(profit * 100) / 100
-            });
-          }
-        }
-      });
-
-      const newOrder: Order = {
-        id: orderId,
-        customer_id: orderData.customer_id,
-        date: orderData.date,
-        channel: orderData.channel,
-        status: orderData.status,
-        delivery_type: orderData.delivery_type,
-        discount: orderData.discount,
-        items: orderItemsList,
-        shipping_fee: orderData.shipping_fee || 0,
-        shipping_cost: orderData.shipping_cost || 0
-      };
-
-      // Create a Delivery item
-      const deliveryStatusMap: Record<OrderStatus, DeliveryStatus> = {
-        'pending': 'pending',
-        'confirmed': 'pending',
-        'shipped': 'dispatched',
-        'delivered': 'delivered'
-      };
-
-      const newDelivery: Delivery = {
-        id: `del-${Date.now()}`,
-        order_id: orderId,
-        tracking: '',
-        pickup_datetime: '',
-        status: deliveryStatusMap[orderData.status]
-      };
-
-      const nextVariants = syncVariantQuantities(updatedStockItems, prev.variants);
-
-      return {
-        ...prev,
-        orders: [newOrder, ...prev.orders],
-        deliveries: [...prev.deliveries, newDelivery],
-        stockItems: updatedStockItems,
-        variants: nextVariants
-      };
+    const { data: orderId, error: rpcError } = await supabase.rpc('create_order', {
+      p_order: orderData
     });
-
-    return orderId;
+    assertNoError(rpcError);
+    await loadData();
+    return orderId as string;
   };
 
-  const updateOrderStatus = (orderId: string, status: OrderStatus) => {
-    const deliveryStatusMap: Record<OrderStatus, DeliveryStatus> = {
-      'pending': 'pending',
-      'confirmed': 'pending',
-      'shipped': 'dispatched',
-      'delivered': 'delivered'
-    };
-
-    setData(prev => ({
-      ...prev,
-      orders: prev.orders.map(o => o.id === orderId ? { ...o, status } : o),
-      deliveries: prev.deliveries.map(d => d.order_id === orderId ? {
-        ...d,
-        status: deliveryStatusMap[status]
-      }: d)
-    }));
+  const updateOrderStatus = async (orderId: string, status: OrderStatus) => {
+    await refreshAfter(
+      supabase.rpc('update_order_status', {
+        p_order_id: orderId,
+        p_status: status
+      }).then(({ error }) => assertNoError(error))
+    );
   };
 
-  const deleteOrder = (orderId: string) => {
-    setData(prev => {
-      // Find all StockItems committed to this order and restore them
-      const nextStockItems = prev.stockItems.map(item => {
-        if (item.order_id === orderId) {
-          return {
-            ...item,
-            status: 'in_stock' as const,
-            order_id: undefined
-          };
-        }
-        return item;
-      });
-
-      const nextVariants = syncVariantQuantities(nextStockItems, prev.variants);
-
-      return {
-        ...prev,
-        orders: prev.orders.filter(o => o.id !== orderId),
-        deliveries: prev.deliveries.filter(d => d.order_id !== orderId),
-        stockItems: nextStockItems,
-        variants: nextVariants
-      };
-    });
+  const deleteOrder = async (orderId: string) => {
+    await refreshAfter(
+      supabase.rpc('delete_order', { p_order_id: orderId }).then(({ error }) => assertNoError(error))
+    );
   };
 
-  // --- DELIVERIES ---
-  const updateDelivery = (orderId: string, updates: Partial<Delivery>) => {
-    setData(prev => {
-      const updatedDeliveries = prev.deliveries.map(d => {
-        if (d.order_id === orderId) {
-          return {
-            ...d,
-            ...updates
-          };
-        }
-        return d;
-      });
-
-      // Synchronize back order status if delivery status is changed explicitly
-      // dispatched -> shipped, delivered -> delivered
-      let updatedOrders = [...prev.orders];
-      if (updates.status) {
-        const orderStatusMap: Record<DeliveryStatus, OrderStatus | null> = {
-          'pending': 'confirmed',
-          'dispatched': 'shipped',
-          'delivered': 'delivered'
-        };
-        const orderStatusUpdate = orderStatusMap[updates.status];
-        if (orderStatusUpdate) {
-          updatedOrders = prev.orders.map(o => o.id === orderId ? {
-            ...o,
-            status: orderStatusUpdate
-          } : o);
-        }
-      }
-
-      return {
-        ...prev,
-        deliveries: updatedDeliveries,
-        orders: updatedOrders
-      };
-    });
+  const updateDelivery = async (orderId: string, updates: Partial<Delivery>) => {
+    await refreshAfter(
+      supabase.rpc('update_delivery', {
+        p_order_id: orderId,
+        p_updates: updates
+      }).then(({ error }) => assertNoError(error))
+    );
   };
 
-  // --- BACKUP / IMPORT / EXPORT / RESET ---
-  const importBackup = (jsonString: string) => {
+  const importBackup = async (jsonString: string) => {
     try {
       const parsed = JSON.parse(jsonString) as AppData;
       if (
@@ -473,22 +404,31 @@ export function useAppData() {
         Array.isArray(parsed.orders) &&
         Array.isArray(parsed.deliveries)
       ) {
-        setData(parsed);
+        const { error: rpcError } = await supabase.rpc('restore_backup', {
+          p_backup: parsed
+        });
+        assertNoError(rpcError);
+        await loadData();
         return { success: true };
-      } else {
-        return { success: false, error: 'รูปแบบข้อมูลสำรองไม่ถูกต้อง (ขาดตารางข้อมูลหลักสำคัญ)' };
       }
+
+      return { success: false, error: 'รูปแบบข้อมูลสำรองไม่ถูกต้อง (ขาดตารางข้อมูลหลักสำคัญ)' };
     } catch (e: any) {
       return { success: false, error: e?.message || 'การอ่านไฟล์ JSON ล้มเหลว' };
     }
   };
 
-  const clearData = () => {
-    setData(EMPTY_DATA);
+  const clearData = async () => {
+    await refreshAfter(
+      supabase.rpc('clear_store_data').then(({ error }) => assertNoError(error))
+    );
   };
 
   return {
     data,
+    loading,
+    error,
+    refresh: loadData,
     addBrand,
     updateBrand,
     deleteBrand,

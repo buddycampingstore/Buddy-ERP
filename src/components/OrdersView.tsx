@@ -41,9 +41,9 @@ interface OrdersViewProps {
     items: { variant_id: string; qty: number; sale_price: number; discount: number }[];
     shipping_fee?: number;
     shipping_cost?: number;
-  }) => string;
-  updateOrderStatus: (orderId: string, status: OrderStatus) => void;
-  deleteOrder: (orderId: string) => void;
+  }) => Promise<string>;
+  updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
+  deleteOrder: (orderId: string) => Promise<void>;
 }
 
 interface NewOrderItem {
@@ -124,7 +124,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     }));
   };
 
-  const handleSaveOrder = (e: React.FormEvent) => {
+  const handleSaveOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (items.some(item => !item.variant_id)) {
       alert('กรุณาเลือกโมเดลเก้าอี้และตัวเลือกสินค้าให้ครบทุกแถว');
@@ -132,7 +132,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     }
 
     try {
-      createOrder({
+      await createOrder({
         customer_id: 'general',
         date,
         channel,
@@ -720,7 +720,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                     <button
                       onClick={() => {
                         if (window.confirm(`⚠️ คำเตือน! คุณกำลังลบออเดอร์ "${order.id}" การลบจะเป็นการปล่อยสต็อกเก้าอี้กางจำนวน ${order.items.length} ตัวคืนสู่คลังทันที ยืนยันที่จะปล่อยสต็อกบิลและลบหรือไม่?`)) {
-                          deleteOrder(order.id);
+                          deleteOrder(order.id).catch((err: any) => alert(`ลบออเดอร์ไม่สำเร็จ: ${err.message || err}`));
                         }
                       }}
                       className="absolute right-4 top-4 p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
@@ -832,7 +832,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                         <span className="text-[9px] text-slate-400 block w-full mb-1">เปลี่ยนสถานะด่วน:</span>
                         {order.status === 'pending' && (
                           <button
-                            onClick={() => updateOrderStatus(order.id, 'confirmed')}
+                            onClick={() => updateOrderStatus(order.id, 'confirmed').catch((err: any) => alert(`อัปเดตสถานะไม่สำเร็จ: ${err.message || err}`))}
                             className="text-[10px] bg-slate-900 text-white font-semibold py-1 px-2.5 rounded-lg hover:bg-slate-800 cursor-pointer"
                           >
                             ยืนยันการโอนเงินแล้ว
@@ -840,7 +840,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                         )}
                         {order.status === 'confirmed' && (
                           <button
-                            onClick={() => updateOrderStatus(order.id, 'shipped')}
+                            onClick={() => updateOrderStatus(order.id, 'shipped').catch((err: any) => alert(`อัปเดตสถานะไม่สำเร็จ: ${err.message || err}`))}
                             className="text-[10px] bg-slate-800 text-white font-semibold py-1 px-2.5 rounded-lg hover:bg-slate-900 cursor-pointer"
                           >
                             อัปเดต: ปิดจ๊อบส่งพัสดุ
@@ -848,7 +848,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                         )}
                         {order.status === 'shipped' && (
                           <button
-                            onClick={() => updateOrderStatus(order.id, 'delivered')}
+                            onClick={() => updateOrderStatus(order.id, 'delivered').catch((err: any) => alert(`อัปเดตสถานะไม่สำเร็จ: ${err.message || err}`))}
                             className="text-[10px] bg-emerald-600 text-white font-semibold py-1 px-2.5 rounded-lg hover:bg-emerald-700 cursor-pointer"
                           >
                             ยืนยัน: ของส่งถึงมือแล้ว
