@@ -10,6 +10,7 @@ import {
   Model, 
   Variant 
 } from '../types';
+import { DeleteAuthRequest } from './DeleteAuthDialog';
 import { 
   Plus, 
   Edit2, 
@@ -35,6 +36,7 @@ interface ProductsViewProps {
   addVariant: (model_id: string, color: string, standard_sale_price?: number) => void;
   updateVariant: (id: string, color: string, model_id: string, standard_sale_price?: number) => void;
   deleteVariant: (id: string) => void;
+  requireDeleteAuth: (request: DeleteAuthRequest) => void;
 }
 
 export const ProductsView: React.FC<ProductsViewProps> = ({
@@ -47,7 +49,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   deleteModel,
   addVariant,
   updateVariant,
-  deleteVariant
+  deleteVariant,
+  requireDeleteAuth
 }) => {
   const [subTab, setSubTab] = useState<'variants' | 'brands_models'>('variants');
   const [searchQuery, setSearchQuery] = useState('');
@@ -121,35 +124,50 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     setShowVariantForm(false);
   };
 
-  // --- DELETE CONFIRMATION CORRECTION (AUTO-SAFE) ---
+  // --- DELETE CONFIRMATION WITH SUPABASE RE-AUTH ---
   const handleConfirmDeleteBrand = (id: string, name: string) => {
     const isUsed = data.models.some(m => m.brand_id === id);
     const msg = isUsed 
-      ? `คำเตือน! แบรนด์ "${name}" มีรุ่นสินค้าผูกใช้อยู่ หากลบจะทำการลบข้อมูลรุ่นและสีพ่วงทั้งหมด ยืนยันที่จะลบหรือไม่?`
-      : `ยืนยันการลบแบรนด์ "${name}" หรือไม่?`;
-    if (window.confirm(msg)) {
-      deleteBrand(id);
-    }
+      ? `แบรนด์ "${name}" มีรุ่นสินค้าผูกใช้อยู่ หากลบจะลบรุ่น สี และข้อมูลที่เกี่ยวข้องทั้งหมด กรุณากรอกรหัสผ่าน Supabase เพื่อยืนยัน`
+      : `ต้องการลบแบรนด์ "${name}" กรุณากรอกรหัสผ่าน Supabase เพื่อยืนยัน`;
+    requireDeleteAuth({
+      title: `ลบแบรนด์ "${name}"`,
+      message: msg,
+      onConfirm: async () => {
+        await deleteBrand(id);
+        alert('ลบแบรนด์เรียบร้อยแล้ว');
+      }
+    });
   };
 
   const handleConfirmDeleteModel = (id: string, name: string) => {
     const isUsed = data.variants.some(v => v.model_id === id);
     const msg = isUsed 
-      ? `คำเตือน! รุ่นสินค้า "${name}" มีตัวเลือกสีและคลังสต็อกผูกอยู่ หากลบระบบจะล้างสีและสต็อกทั้งหมด ยืนยันการลบหรือไม่?`
-      : `ยืนยันการลบรุ่นสินค้า "${name}" หรือไม่?`;
-    if (window.confirm(msg)) {
-      deleteModel(id);
-    }
+      ? `รุ่นสินค้า "${name}" มีตัวเลือกสีและคลังสต็อกผูกอยู่ หากลบระบบจะล้างสีและสต็อกทั้งหมด กรุณากรอกรหัสผ่าน Supabase เพื่อยืนยัน`
+      : `ต้องการลบรุ่นสินค้า "${name}" กรุณากรอกรหัสผ่าน Supabase เพื่อยืนยัน`;
+    requireDeleteAuth({
+      title: `ลบรุ่นสินค้า "${name}"`,
+      message: msg,
+      onConfirm: async () => {
+        await deleteModel(id);
+        alert('ลบรุ่นสินค้าเรียบร้อยแล้ว');
+      }
+    });
   };
 
   const handleConfirmDeleteVariant = (id: string, color: string, name: string) => {
     const count = data.stockItems.filter(item => item.variant_id === id && item.status === 'in_stock').length;
     const msg = count > 0 
-      ? `คำเตือน! ตัวเลือกสี "${color}" นี้มีสินค้าค้างอยู่ในสต็อกจริง ${count} ตัว หากลบตัวเลือกนี้ ข้อมูลสต็อกทั้งหมดของตัวเดิมจะถูกล้าง ยืนยันการลบหรือไม่?`
-      : `ยืนยันการลบตัวเลือกสี "${color}" ของรุ่น "${name}" หรือไม่?`;
-    if (window.confirm(msg)) {
-      deleteVariant(id);
-    }
+      ? `ตัวเลือกสี "${color}" นี้มีสินค้าค้างอยู่ในสต็อกจริง ${count} ตัว หากลบตัวเลือกนี้ ข้อมูลสต็อกทั้งหมดของตัวเดิมจะถูกล้าง กรุณากรอกรหัสผ่าน Supabase เพื่อยืนยัน`
+      : `ต้องการลบตัวเลือกสี "${color}" ของรุ่น "${name}" กรุณากรอกรหัสผ่าน Supabase เพื่อยืนยัน`;
+    requireDeleteAuth({
+      title: `ลบตัวเลือกสี "${color}"`,
+      message: msg,
+      onConfirm: async () => {
+        await deleteVariant(id);
+        alert('ลบตัวเลือกสินค้าเรียบร้อยแล้ว');
+      }
+    });
   };
 
   // --- FILTERED VARIANTS ---

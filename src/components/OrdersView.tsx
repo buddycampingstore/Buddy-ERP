@@ -12,6 +12,7 @@ import {
   OrderStatus, 
   DeliveryType 
 } from '../types';
+import { DeleteAuthRequest } from './DeleteAuthDialog';
 import { 
   Plus, 
   Trash2, 
@@ -44,6 +45,7 @@ interface OrdersViewProps {
   }) => Promise<string>;
   updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
   deleteOrder: (orderId: string) => Promise<void>;
+  requireDeleteAuth: (request: DeleteAuthRequest) => void;
 }
 
 interface NewOrderItem {
@@ -57,7 +59,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   data,
   createOrder,
   updateOrderStatus,
-  deleteOrder
+  deleteOrder,
+  requireDeleteAuth
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -721,9 +724,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                     {/* Trash float delete inside and release stock */}
                     <button
                       onClick={() => {
-                        if (window.confirm(`⚠️ คำเตือน! คุณกำลังลบออเดอร์ "${order.id}" การลบจะเป็นการปล่อยสต็อกเก้าอี้กางจำนวน ${order.items.length} ตัวคืนสู่คลังทันที ยืนยันที่จะปล่อยสต็อกบิลและลบหรือไม่?`)) {
-                          deleteOrder(order.id).catch((err: any) => alert(`ลบออเดอร์ไม่สำเร็จ: ${err.message || err}`));
-                        }
+                        requireDeleteAuth({
+                          title: `ลบออเดอร์ ${order.id.slice(0, 8)}`,
+                          message: `การลบออเดอร์นี้จะปล่อยสต็อกเก้าอี้กางจำนวน ${order.items.length} ตัวคืนสู่คลังทันที กรุณากรอกรหัสผ่าน Supabase เพื่อยืนยัน`,
+                          onConfirm: async () => {
+                            await deleteOrder(order.id);
+                            alert('ลบออเดอร์และคืนสต็อกเรียบร้อยแล้ว');
+                          }
+                        });
                       }}
                       className="absolute right-4 top-4 p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
                       title="ลบออเดอร์และคืนสต็อกของ"

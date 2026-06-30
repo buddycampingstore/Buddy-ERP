@@ -11,6 +11,7 @@ import { PurchaseView } from './components/PurchaseView';
 import { OrdersView } from './components/OrdersView';
 import { DeliveriesView } from './components/DeliveriesView';
 import { ReportsView } from './components/ReportsView';
+import { DeleteAuthDialog, DeleteAuthRequest } from './components/DeleteAuthDialog';
 import { AnimatePresence, motion } from 'motion/react';
 import logoImg from './assets/images/logo_1782269852938.jpg';
 import { 
@@ -58,12 +59,17 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [deleteAuthRequest, setDeleteAuthRequest] = useState<DeleteAuthRequest | null>(null);
 
   // --- BACKUP PANEL STATE ---
   const [backupInput, setBackupInput] = useState('');
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+  };
+
+  const requireDeleteAuth = (request: DeleteAuthRequest) => {
+    setDeleteAuthRequest(request);
   };
 
   // Export JSON file download
@@ -112,17 +118,16 @@ export default function App() {
   };
 
   const handleClearAllSystemData = async () => {
-    const password = window.prompt('⚠️ คำเตือนร้ายแรง! การดำเนินการนี้จะลบสินค้า ออเดอร์ ลูกค้า และข้อมูลสต็อกทั้งหมดออกจากระบบแบบถาวร\n\nกรุณากรอกรหัสผ่านความปลอดภัย (รหัสผ่านคือ: buddy99) เพื่อยืนยัน:');
-    if (password === null) {
-      return; // Cancelled
-    }
-    if (password.trim() === 'buddy99' || password.trim() === '9999' || password.trim() === 'buddy') {
-      await clearData();
-      alert('ระบบทำการลบข้อมูลทั้งหมดเรียบร้อยแล้ว ปัจจุบันข้อมูลว่างเปล่าสมบูรณ์!');
-      setActiveTab('dashboard');
-    } else {
-      alert('❌ รหัสผ่านไม่ถูกต้อง! ไม่สามารถลบข้อมูลระบบได้');
-    }
+    requireDeleteAuth({
+      title: 'ยืนยันการลบข้อมูลระบบทั้งหมด',
+      message: 'การดำเนินการนี้จะลบสินค้า ออเดอร์ ลูกค้า สต็อก และข้อมูลทั้งหมดออกจาก Supabase แบบถาวร กรุณากรอกรหัสผ่าน Supabase เพื่อยืนยัน',
+      confirmLabel: 'ยืนยันลบทั้งหมด',
+      onConfirm: async () => {
+        await clearData();
+        alert('ระบบทำการลบข้อมูลทั้งหมดเรียบร้อยแล้ว ปัจจุบันข้อมูลว่างเปล่าสมบูรณ์!');
+        setActiveTab('dashboard');
+      }
+    });
   };
 
   if (loading) {
@@ -172,6 +177,7 @@ export default function App() {
             addVariant={addVariant}
             updateVariant={updateVariant}
             deleteVariant={deleteVariant}
+            requireDeleteAuth={requireDeleteAuth}
           />
         );
       case 'purchase':
@@ -183,6 +189,7 @@ export default function App() {
             createOrder={createOrder}
             updateOrderStatus={updateOrderStatus}
             deleteOrder={deleteOrder}
+            requireDeleteAuth={requireDeleteAuth}
           />
         );
       case 'deliveries':
@@ -474,6 +481,11 @@ export default function App() {
           <span className="text-[9px] font-medium leading-none">รายงาน</span>
         </button>
       </nav>
+
+      <DeleteAuthDialog
+        request={deleteAuthRequest}
+        onClose={() => setDeleteAuthRequest(null)}
+      />
 
     </div>
   );
