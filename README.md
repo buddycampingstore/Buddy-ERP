@@ -2,6 +2,8 @@
 
 Backoffice สำหรับจัดการสินค้า สต็อก WAC ลูกค้า ออเดอร์ การจัดส่ง และรายงาน โดยซิงค์ข้อมูลผ่าน Supabase
 
+ระบบนี้ใช้ Supabase SQL เป็นแหล่งข้อมูลหลักเท่านั้น ถ้าเชื่อมต่อ SQL ไม่สำเร็จ แอปจะไม่เปิดหน้า ERP ให้ใช้งาน
+
 ## Run Locally
 
 1. Install dependencies:
@@ -53,3 +55,4 @@ create policy "buddy_erp_backoffice_app_write"
 ```
 
 Open "ตั้งค่า / สำรองข้อมูล" to upload local data or pull data from Supabase. Supabase URL, anon key, table name, and row ID are read from `.env.local` only.
+When the configured row does not exist yet, the app creates an empty row in Supabase before opening the ERP screen.

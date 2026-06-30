@@ -73,6 +73,7 @@ export default function App() {
     lastSynced: supabaseLastSynced,
     isPushing: supabaseIsPushing,
     isPulling: supabaseIsPulling,
+    hasLoadedRemote: supabaseHasLoadedRemote,
     pushToSupabase,
     pullFromSupabase
   } = useSupabase(db, setDb);
@@ -471,6 +472,78 @@ create policy "${safeSupabaseTableName}_app_write"
         return null;
     }
   };
+
+  if (supabaseStatus !== 'connected' || !supabaseHasLoadedRemote) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 font-sans">
+        <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-5">
+          <div className="flex items-start gap-3">
+            <div className="w-11 h-11 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0">
+              {supabaseStatus === 'connecting' ? (
+                <RefreshCw className="w-5 h-5 text-emerald-400 animate-spin" />
+              ) : (
+                <Database className="w-5 h-5 text-emerald-400" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold tracking-tight">ต้องเชื่อมต่อ Supabase SQL ก่อนใช้งาน</h1>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                ระบบนี้ใช้ SQL เป็นแหล่งข้อมูลหลักเท่านั้น จึงจะไม่เปิดหน้า ERP จนกว่าจะอ่านตารางและ row ใน Supabase สำเร็จ
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div className="rounded-xl bg-slate-950 border border-slate-800 p-3">
+              <p className="text-slate-500 font-bold uppercase text-[10px]">Project URL</p>
+              <p className="font-mono text-slate-200 truncate mt-1" title={supabaseUrl || 'ยังไม่ได้ตั้งค่า'}>
+                {supabaseUrl || 'ยังไม่ได้ตั้งค่า VITE_SUPABASE_URL'}
+              </p>
+            </div>
+            <div className="rounded-xl bg-slate-950 border border-slate-800 p-3">
+              <p className="text-slate-500 font-bold uppercase text-[10px]">Anon Key</p>
+              <p className={supabaseAnonKey ? 'text-emerald-400 font-semibold mt-1' : 'text-rose-400 font-semibold mt-1'}>
+                {supabaseAnonKey ? 'โหลดจาก .env.local แล้ว' : 'ยังไม่ได้ตั้งค่า VITE_SUPABASE_ANON_KEY'}
+              </p>
+            </div>
+            <div className="rounded-xl bg-slate-950 border border-slate-800 p-3">
+              <p className="text-slate-500 font-bold uppercase text-[10px]">Table</p>
+              <p className="font-mono text-slate-200 truncate mt-1">{supabaseTableName}</p>
+            </div>
+            <div className="rounded-xl bg-slate-950 border border-slate-800 p-3">
+              <p className="text-slate-500 font-bold uppercase text-[10px]">Row ID</p>
+              <p className="font-mono text-slate-200 truncate mt-1">{supabaseRowId}</p>
+            </div>
+          </div>
+
+          {supabaseErrorMsg && (
+            <div className="rounded-xl bg-rose-950/40 border border-rose-800 text-rose-200 text-xs p-3 leading-relaxed">
+              {supabaseErrorMsg}
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              type="button"
+              onClick={handleCopySql}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              {copiedSql ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              {copiedSql ? 'คัดลอก SQL แล้ว' : 'คัดลอก SQL สำหรับสร้างตาราง'}
+            </button>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <RefreshCw className="w-4 h-4" />
+              โหลดใหม่
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col md:flex-row font-sans" id="app-viewport">

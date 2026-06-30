@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { 
   AppDatabase, 
   Brand, 
@@ -21,7 +21,6 @@ import {
   DeliveryStatus 
 } from '../types';
 
-const LOCAL_STORAGE_KEY = 'buddy_erp_database';
 const EMPTY_DATABASE: AppDatabase = {
   brands: [],
   models: [],
@@ -34,26 +33,7 @@ const EMPTY_DATABASE: AppDatabase = {
 };
 
 export function useDatabase() {
-  const [db, setDb] = useState<AppDatabase>(() => {
-    try {
-      const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as AppDatabase;
-        // Basic schema verification
-        if (parsed.brands && parsed.models && parsed.variants && parsed.purchaseBatches) {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.error('Error loading database from local storage, using empty database:', e);
-    }
-    return EMPTY_DATABASE;
-  });
-
-  // Save database to localStorage on modify
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(db));
-  }, [db]);
+  const [db, setDb] = useState<AppDatabase>(EMPTY_DATABASE);
 
   // Recalculate variant quantities dynamically to ensure robustness
   const syncVariantQuantities = (currentStockItems: StockItem[], currentVariants: Variant[]): Variant[] => {

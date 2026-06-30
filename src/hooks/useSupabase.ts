@@ -4,6 +4,8 @@ import { AppDatabase } from '../types';
 
 const AUTO_SYNC_LS_KEY = 'buddy_erp_supabase_auto_sync';
 const DEFAULT_TABLE = 'buddy_erp_backoffice';
+type SupabaseStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+
 const LEGACY_LS_KEYS = [
   'campchair_supabase_url',
   'campchair_supabase_anon_key',
@@ -13,11 +15,27 @@ const LEGACY_LS_KEYS = [
   'buddy_erp_supabase_url',
   'buddy_erp_supabase_anon_key',
   'buddy_erp_supabase_table',
-  'buddy_erp_supabase_row_id'
+  'buddy_erp_supabase_row_id',
+  'buddy_erp_database'
 ];
 
 function clearLegacySupabaseConfig() {
   LEGACY_LS_KEYS.forEach((key) => localStorage.removeItem(key));
+}
+
+function isValidAppDatabase(value: unknown): value is AppDatabase {
+  const db = value as AppDatabase;
+  return Boolean(
+    db &&
+    Array.isArray(db.brands) &&
+    Array.isArray(db.models) &&
+    Array.isArray(db.variants) &&
+    Array.isArray(db.purchaseBatches) &&
+    Array.isArray(db.stockItems) &&
+    Array.isArray(db.customers) &&
+    Array.isArray(db.orders) &&
+    Array.isArray(db.deliveries)
+  );
 }
 
 export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
@@ -30,11 +48,12 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
     return stored === null ? true : stored === 'true';
   });
   const [client, setClient] = useState<SupabaseClient | null>(null);
-  const [status, setStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
+  const [status, setStatus] = useState<SupabaseStatus>('disconnected');
   const [errorMsg, setErrorMsg] = useState('');
   const [lastSynced, setLastSynced] = useState<string>('');
   const [isPushing, setIsPushing] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
+  const [hasLoadedRemote, setHasLoadedRemote] = useState(false);
 
   useEffect(() => {
     clearLegacySupabaseConfig();
@@ -44,11 +63,14 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
     localStorage.setItem(AUTO_SYNC_LS_KEY, String(autoSync));
   }, [autoSync]);
 
-  // Re-initialize client when url or key changes
   useEffect(() => {
+    let cancelled = false;
+
     if (url.trim() && anonKey.trim()) {
       try {
         setStatus('connecting');
+        setErrorMsg('');
+        setHasLoadedRemote(false);
         const supabase = createClient(url.trim(), anonKey.trim(), {
           auth: {
             persistSession: false,
@@ -57,19 +79,89 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
           }
         });
         setClient(supabase);
-        setStatus('connected');
-        setErrorMsg('');
+
+        const connectSql = async () => {
+          const { data, error } = await supabase
+            .from(tableName)
+            .select('data, updated_at')
+            .eq('id', rowId)
+            .maybeSingle();
+
+          if (cancelled) return;
+
+          if (error) {
+            setClient(null);
+            setStatus('error');
+            if (error.code === '42P01') {
+              setErrorMsg(`ไม่พบตาราง "${tableName}" ใน Supabase กรุณารัน SQL จากหน้า README หรือ database.sql ก่อน`);
+            } else {
+              setErrorMsg(`เชื่อม SQL ไม่สำเร็จ: ${error.message}`);
+            }
+            return;
+          }
+
+          if (data?.data) {
+            if (!isValidAppDatabase(data.data)) {
+              setClient(null);
+              setStatus('error');
+              setErrorMsg(`ข้อมูลใน row "${rowId}" ของตาราง "${tableName}" ไม่ตรงรูปแบบระบบ Buddy ERP`);
+              return;
+            }
+            setDb(data.data);
+          } else {
+            const emptyDb: AppDatabase = {
+              brands: [],
+              models: [],
+              variants: [],
+              purchaseBatches: [],
+              stockItems: [],
+              customers: [],
+              orders: [],
+              deliveries: []
+            };
+            const { error: insertError } = await supabase
+              .from(tableName)
+              .upsert({
+                id: rowId,
+                data: emptyDb,
+                updated_at: new Date().toISOString()
+              }, { onConflict: 'id' });
+
+            if (cancelled) return;
+
+            if (insertError) {
+              setClient(null);
+              setStatus('error');
+              setErrorMsg(`สร้าง row เริ่มต้นใน SQL ไม่สำเร็จ: ${insertError.message}`);
+              return;
+            }
+            setDb(emptyDb);
+          }
+
+          setHasLoadedRemote(true);
+          setStatus('connected');
+          setLastSynced(new Date().toLocaleTimeString('th-TH'));
+        };
+
+        connectSql();
       } catch (err: any) {
+        if (cancelled) return;
         setClient(null);
+        setHasLoadedRemote(false);
         setStatus('error');
         setErrorMsg(err?.message || 'URL หรือ API Key ไม่ถูกต้อง');
       }
     } else {
       setClient(null);
+      setHasLoadedRemote(false);
       setStatus('disconnected');
-      setErrorMsg('');
+      setErrorMsg('ต้องตั้งค่า VITE_SUPABASE_URL และ VITE_SUPABASE_ANON_KEY ใน .env.local ก่อนใช้งาน');
     }
-  }, [url, anonKey, tableName]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [url, anonKey, tableName, rowId, setDb]);
 
   // Push to Supabase
   const pushToSupabase = async (currentDb: AppDatabase = db): Promise<{ success: boolean; error?: string }> => {
@@ -123,17 +215,11 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
       }
 
       if (data && data.data) {
-        const remoteDb = data.data as AppDatabase;
-        
-        // Basic schema checking to avoid corruption
-        if (
-          Array.isArray(remoteDb.brands) &&
-          Array.isArray(remoteDb.models) &&
-          Array.isArray(remoteDb.variants)
-        ) {
-          setDb(remoteDb);
+        if (isValidAppDatabase(data.data)) {
+          setDb(data.data);
+          setHasLoadedRemote(true);
           setLastSynced(new Date().toLocaleTimeString('th-TH'));
-          return { success: true, data: remoteDb };
+          return { success: true, data: data.data };
         } else {
           return { success: false, error: 'รูปแบบข้อมูลใน Supabase ไม่ถูกต้องหรือเสียหาย' };
         }
@@ -148,7 +234,7 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
 
   // Debounced Auto Sync on database changes
   useEffect(() => {
-    if (!autoSync || status !== 'connected' || !client) return;
+    if (!autoSync || status !== 'connected' || !client || !hasLoadedRemote) return;
 
     const timer = setTimeout(() => {
       pushToSupabase();
@@ -156,13 +242,6 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
 
     return () => clearTimeout(timer);
   }, [db, autoSync, status]);
-
-  // Auto Pull on connection if autoSync is true
-  useEffect(() => {
-    if (autoSync && status === 'connected' && client) {
-      pullFromSupabase();
-    }
-  }, [status]);
 
   return {
     url,
@@ -176,6 +255,7 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
     lastSynced,
     isPushing,
     isPulling,
+    hasLoadedRemote,
     pushToSupabase,
     pullFromSupabase,
     client,
