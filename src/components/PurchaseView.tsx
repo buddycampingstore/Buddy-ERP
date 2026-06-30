@@ -496,7 +496,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                         </div>
                         <div>
                           <div className="font-semibold text-slate-700 text-sm flex items-center gap-2">
-                            <span>เลขชุดล็อต: {batch.id}</span>
+                            <span>เลขชุดล็อต: {batch.id.slice(0, 5)}</span>
                             {batch.note && (
                               <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.2 rounded font-normal font-sans">
                                 {batch.note}
