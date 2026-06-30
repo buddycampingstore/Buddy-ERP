@@ -517,7 +517,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                                             setVariantEditId(v.id);
                                             setVariantColor(v.color);
                                             setVariantModelId(v.model_id);
-                                            setVariantStandardSalePrice(v.standard_sale_price !== undefined ? String(v.standard_sale_price) : '');
+                                            setVariantStandardSalePrice(v.standard_sale_price ? String(v.standard_sale_price) : '');
                                             setShowVariantForm(true);
                                           }}
                                           className="p-1 px-2 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-md transition-colors cursor-pointer flex items-center gap-1 text-[11px]"
@@ -559,7 +559,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                                         setVariantEditId(v.id);
                                         setVariantColor(v.color);
                                         setVariantModelId(v.model_id);
-                                        setVariantStandardSalePrice(v.standard_sale_price !== undefined ? String(v.standard_sale_price) : '');
+                                        setVariantStandardSalePrice(v.standard_sale_price ? String(v.standard_sale_price) : '');
                                         setShowVariantForm(true);
                                       }}
                                       className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"

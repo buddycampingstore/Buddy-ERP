@@ -82,6 +82,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     { variant_id: '', qty: 1, sale_price: 2200, discount: 0 }
   ]);
 
+  const numberInputValue = (value: number) => value === 0 ? '' : value;
+
   // Set first variant as default on open
   React.useEffect(() => {
     if (isAdding && data.variants.length > 0 && !items[0].variant_id) {
@@ -349,7 +351,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                       <input
                         type="number"
                         min="0"
-                        value={shippingFee !== undefined && shippingFee !== null ? shippingFee : ''}
+                        value={numberInputValue(shippingFee)}
                         onChange={(e) => setShippingFee(Math.max(0, parseInt(e.target.value) || 0))}
                         className="w-full text-xs p-2 bg-white outline-hidden border border-slate-200 rounded-lg text-slate-800 font-mono font-bold"
                         placeholder="0"
@@ -360,7 +362,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                       <input
                         type="number"
                         min="0"
-                        value={shippingCost !== undefined && shippingCost !== null ? shippingCost : ''}
+                        value={numberInputValue(shippingCost)}
                         onChange={(e) => setShippingCost(Math.max(0, parseInt(e.target.value) || 0))}
                         className="w-full text-xs p-2 bg-white outline-hidden border border-slate-200 rounded-lg text-slate-800 font-mono font-bold text-rose-600"
                         placeholder="0"
@@ -526,7 +528,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                               <input
                                 type="number"
                                 min="1"
-                                value={item.qty !== undefined && item.qty !== null ? item.qty : ''}
+                                value={numberInputValue(item.qty)}
                                 onChange={(e) => handleUpdateItemRow(idx, 'qty', Math.max(1, parseInt(e.target.value) || 0))}
                                 className="w-full text-xs p-2.5 md:p-2 bg-white outline-hidden border border-slate-200 rounded-lg text-slate-800 font-mono text-left md:text-center focus:border-emerald-700"
                                 required
@@ -539,7 +541,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                               <input
                                 type="number"
                                 min="0"
-                                value={item.sale_price !== undefined && item.sale_price !== null ? item.sale_price : ''}
+                                value={numberInputValue(item.sale_price)}
                                 onChange={(e) => handleUpdateItemRow(idx, 'sale_price', Math.max(0, parseInt(e.target.value) || 0))}
                                 className="w-full text-xs p-2.5 md:p-2 bg-white outline-hidden border border-slate-200 rounded-lg text-slate-800 font-mono text-right focus:border-emerald-700"
                                 required
@@ -603,7 +605,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                       <input
                         type="number"
                         min="0"
-                        value={globalDiscount !== undefined && globalDiscount !== null ? globalDiscount : ''}
+                        value={numberInputValue(globalDiscount)}
                         onChange={(e) => setGlobalDiscount(Math.max(0, parseInt(e.target.value) || 0))}
                         placeholder="0"
                         className="text-xs p-1.5 mt-0.5 bg-white outline-hidden border border-slate-200 rounded-md text-slate-800 font-mono font-bold w-32 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500 transition-all"

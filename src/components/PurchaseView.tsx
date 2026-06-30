@@ -61,6 +61,8 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
     { variant_id: data.variants[0]?.id || '', qty: 5, unit_price: 1500 }
   ]);
 
+  const numberInputValue = (value: number) => value === 0 ? '' : value;
+
   // --- HANDLERS ---
   const handleAddItemRow = () => {
     setItems([
@@ -180,7 +182,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                   type="number"
                   min="0"
                   required
-                  value={shippingCost !== undefined && shippingCost !== null ? shippingCost : ''}
+                  value={numberInputValue(shippingCost)}
                   onChange={(e) => setShippingCost(Math.max(0, parseFloat(e.target.value) || 0))}
                   placeholder="0.00"
                   className="w-full text-xs p-3 bg-slate-50 outline-hidden border border-slate-200 rounded-xl focus:border-emerald-700 focus:bg-white text-slate-800 font-mono font-semibold"
@@ -193,7 +195,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                   type="number"
                   min="0"
                   required
-                  value={otherCost !== undefined && otherCost !== null ? otherCost : ''}
+                  value={numberInputValue(otherCost)}
                   onChange={(e) => setOtherCost(Math.max(0, parseFloat(e.target.value) || 0))}
                   placeholder="0.00"
                   className="w-full text-xs p-3 bg-slate-50 outline-hidden border border-slate-200 rounded-xl focus:border-emerald-700 focus:bg-white text-slate-800 font-mono font-semibold"
@@ -367,7 +369,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                               <input
                                 type="number"
                                 min="1"
-                                value={item.qty !== undefined && item.qty !== null ? item.qty : ''}
+                                value={numberInputValue(item.qty)}
                                 onChange={(e) => handleUpdateItemRow(idx, 'qty', Math.max(1, parseInt(e.target.value) || 0))}
                                 className="w-full text-xs p-2.5 md:p-2 bg-white outline-hidden border border-slate-200 rounded-lg text-slate-800 font-mono text-left md:text-center focus:border-emerald-700"
                                 required
@@ -380,7 +382,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                               <input
                                 type="number"
                                 min="0"
-                                value={item.unit_price !== undefined && item.unit_price !== null ? item.unit_price : ''}
+                                value={numberInputValue(item.unit_price)}
                                 onChange={(e) => handleUpdateItemRow(idx, 'unit_price', Math.max(0, parseFloat(e.target.value) || 0))}
                                 className="w-full text-xs p-2.5 md:p-2 bg-white outline-hidden border border-slate-200 rounded-lg text-slate-800 font-mono text-right focus:border-emerald-700"
                                 required
