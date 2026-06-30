@@ -24,8 +24,10 @@ import {
   X,
   FileDown,
   FileUp,
-  RotateCcw
+  RotateCcw,
+  LogOut
 } from 'lucide-react';
+import { supabase } from './lib/supabase';
 
 type TabType = 'dashboard' | 'products' | 'purchase' | 'orders' | 'deliveries' | 'reports' | 'backup';
 
@@ -59,6 +61,10 @@ export default function App() {
 
   // --- BACKUP PANEL STATE ---
   const [backupInput, setBackupInput] = useState('');
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
 
   // Export JSON file download
   const handleDownloadBackup = () => {
@@ -341,6 +347,14 @@ export default function App() {
               </div>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full py-2.5 px-3 rounded-xl font-semibold flex items-center gap-2.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
+          >
+            <LogOut className="w-4 h-4 shrink-0" />
+            <span>ออกจากระบบ</span>
+          </button>
         </div>
 
       </aside>
@@ -397,6 +411,19 @@ export default function App() {
                 </button>
               );
             })}
+            <div className="pt-2 mt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  handleLogout();
+                }}
+                className="w-full py-2.5 px-4 rounded-xl font-bold flex items-center gap-3 transition-colors text-left cursor-pointer text-rose-600 hover:bg-rose-50"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>ออกจากระบบ</span>
+              </button>
+            </div>
             
           </motion.div>
         )}
