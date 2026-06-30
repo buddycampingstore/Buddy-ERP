@@ -129,7 +129,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
       <button
         type="button"
         onClick={() => supabase.auth.signOut()}
-        className="fixed top-3 right-3 z-50 bg-white border border-slate-200 shadow-sm text-slate-600 hover:text-rose-600 text-xs font-semibold rounded-lg px-3 py-2 flex items-center gap-1.5"
+        className="fixed bottom-20 left-3 md:bottom-4 md:left-4 z-50 bg-white border border-slate-200 shadow-sm text-slate-600 hover:text-rose-600 text-xs font-semibold rounded-lg px-3 py-2 flex items-center gap-1.5"
       >
         <LogOut className="w-3.5 h-3.5" />
         Logout
