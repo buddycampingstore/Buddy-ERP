@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useDatabase } from './hooks/useDatabase';
 import { useSupabase } from './hooks/useSupabase';
 import { DashboardView } from './components/DashboardView';
@@ -12,7 +12,6 @@ import { PurchaseView } from './components/PurchaseView';
 import { OrdersView } from './components/OrdersView';
 import { DeliveriesView } from './components/DeliveriesView';
 import { ReportsView } from './components/ReportsView';
-import { LoginView } from './components/LoginView';
 import { AnimatePresence, motion } from 'motion/react';
 import logoImg from './assets/images/logo_1782269852938.jpg';
 import { 
@@ -32,13 +31,10 @@ import {
   CloudDownload,
   RefreshCw,
   Copy,
-  Check,
-  LogOut
+  Check
 } from 'lucide-react';
 
 type TabType = 'dashboard' | 'products' | 'purchase' | 'orders' | 'deliveries' | 'reports' | 'backup';
-const AUTH_SESSION_KEY = 'buddy_erp_is_authenticated';
-const AUTH_SCOPE_KEY = 'buddy_erp_auth_scope';
 
 export default function App() {
   const {
@@ -78,81 +74,11 @@ export default function App() {
     isPushing: supabaseIsPushing,
     isPulling: supabaseIsPulling,
     pushToSupabase,
-    pullFromSupabase,
-    client: supabaseClient
+    pullFromSupabase
   } = useSupabase(db, setDb);
-  const authScope = `${supabaseUrl}|${supabaseTableName}`;
-
-  // Listen to Supabase Auth state changes
-  useEffect(() => {
-    if (!supabaseClient) return;
-
-    // Check existing session on load
-    supabaseClient.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setIsAuthenticated(true);
-        sessionStorage.setItem(AUTH_SESSION_KEY, 'true');
-        sessionStorage.setItem(AUTH_SCOPE_KEY, authScope);
-      }
-    });
-
-    // Sub to changes
-    const { data: { subscription } } = supabaseClient.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        setIsAuthenticated(true);
-        sessionStorage.setItem(AUTH_SESSION_KEY, 'true');
-        sessionStorage.setItem(AUTH_SCOPE_KEY, authScope);
-      } else {
-        if (event === 'SIGNED_OUT') {
-          setIsAuthenticated(false);
-          sessionStorage.removeItem(AUTH_SESSION_KEY);
-          sessionStorage.removeItem(AUTH_SCOPE_KEY);
-        }
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [supabaseClient, authScope]);
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  // --- AUTHENTICATION STATE ---
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return sessionStorage.getItem(AUTH_SESSION_KEY) === 'true' && sessionStorage.getItem(AUTH_SCOPE_KEY) === authScope;
-  });
-
-  useEffect(() => {
-    if (sessionStorage.getItem(AUTH_SCOPE_KEY) !== authScope) {
-      sessionStorage.removeItem(AUTH_SESSION_KEY);
-      sessionStorage.removeItem(AUTH_SCOPE_KEY);
-      setIsAuthenticated(false);
-    }
-  }, [authScope]);
-
-  const markAuthenticated = () => {
-    sessionStorage.setItem(AUTH_SESSION_KEY, 'true');
-    sessionStorage.setItem(AUTH_SCOPE_KEY, authScope);
-    setIsAuthenticated(true);
-  };
-
-  const handleLogout = async () => {
-    if (window.confirm('คุณแน่ใจหรือไม่ว่าต้องการออกจากระบบเพื่อความปลอดภัย?')) {
-      if (supabaseClient) {
-        try {
-          await supabaseClient.auth.signOut();
-        } catch (e) {
-          console.error(e);
-        }
-      }
-      sessionStorage.removeItem(AUTH_SESSION_KEY);
-      sessionStorage.removeItem(AUTH_SCOPE_KEY);
-      setIsAuthenticated(false);
-      setMobileMenuOpen(false);
-    }
-  };
 
   // --- BACKUP PANEL STATE ---
   const [backupInput, setBackupInput] = useState('');
@@ -172,18 +98,18 @@ create index if not exists ${safeSupabaseTableName}_data_gin_idx
 
 alter table public.${safeSupabaseTableName} enable row level security;
 
-drop policy if exists "${safeSupabaseTableName}_authenticated_read" on public.${safeSupabaseTableName};
-create policy "${safeSupabaseTableName}_authenticated_read"
+drop policy if exists "${safeSupabaseTableName}_app_read" on public.${safeSupabaseTableName};
+create policy "${safeSupabaseTableName}_app_read"
   on public.${safeSupabaseTableName}
   for select
-  to authenticated
+  to anon, authenticated
   using (true);
 
-drop policy if exists "${safeSupabaseTableName}_authenticated_write" on public.${safeSupabaseTableName};
-create policy "${safeSupabaseTableName}_authenticated_write"
+drop policy if exists "${safeSupabaseTableName}_app_write" on public.${safeSupabaseTableName};
+create policy "${safeSupabaseTableName}_app_write"
   on public.${safeSupabaseTableName}
   for all
-  to authenticated
+  to anon, authenticated
   using (true)
   with check (true);`;
 
@@ -546,19 +472,6 @@ create policy "${safeSupabaseTableName}_authenticated_write"
     }
   };
 
-  if (!isAuthenticated) {
-    return (
-      <LoginView 
-        client={supabaseClient}
-        status={supabaseStatus}
-        errorMsg={supabaseErrorMsg}
-        url={supabaseUrl}
-        tableName={supabaseTableName}
-        onLoginSuccess={markAuthenticated}
-      />
-    );
-  }
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col md:flex-row font-sans" id="app-viewport">
       
@@ -653,7 +566,7 @@ create policy "${safeSupabaseTableName}_authenticated_write"
 
         {/* Operator Badge info at base of Sidebar */}
         <div className="p-4 border-t border-slate-100 text-[11px] text-slate-500 space-y-2">
-          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-7 h-7 rounded-lg overflow-hidden border border-slate-200 flex items-center justify-center bg-white shrink-0">
                 <img src={logoImg} alt="BC" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -663,13 +576,6 @@ create policy "${safeSupabaseTableName}_authenticated_write"
                 <p className="text-[9px] text-slate-400">ระบบคลังและออเดอร์</p>
               </div>
             </div>
-            <button
-              onClick={handleLogout}
-              className="text-slate-400 hover:text-rose-600 transition-colors cursor-pointer p-1"
-              title="ออกจากระบบ"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
           </div>
         </div>
 
@@ -757,15 +663,6 @@ create policy "${safeSupabaseTableName}_authenticated_write"
               );
             })}
             
-            <div className="border-t border-slate-100 my-2 pt-2">
-              <button
-                onClick={handleLogout}
-                className="w-full py-2.5 px-4 rounded-xl font-bold flex items-center gap-3 text-rose-600 hover:bg-rose-50 transition-colors text-left cursor-pointer"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>ออกจากระบบ</span>
-              </button>
-            </div>
           </motion.div>
         )}
       </AnimatePresence>

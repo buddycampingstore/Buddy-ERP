@@ -38,18 +38,18 @@ create table if not exists public.buddy_erp_backoffice (
 
 alter table public.buddy_erp_backoffice enable row level security;
 
-create policy "buddy_erp_backoffice_authenticated_read"
+create policy "buddy_erp_backoffice_app_read"
   on public.buddy_erp_backoffice
   for select
-  to authenticated
+  to anon, authenticated
   using (true);
 
-create policy "buddy_erp_backoffice_authenticated_write"
+create policy "buddy_erp_backoffice_app_write"
   on public.buddy_erp_backoffice
   for all
-  to authenticated
+  to anon, authenticated
   using (true)
   with check (true);
 ```
 
-After login, open "ตั้งค่า / สำรองข้อมูล" to upload local data or pull data from Supabase. Supabase URL, anon key, table name, and row ID are read from `.env.local` only.
+Open "ตั้งค่า / สำรองข้อมูล" to upload local data or pull data from Supabase. Supabase URL, anon key, table name, and row ID are read from `.env.local` only.

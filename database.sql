@@ -16,18 +16,18 @@ create index if not exists buddy_erp_backoffice_data_gin_idx
 
 alter table public.buddy_erp_backoffice enable row level security;
 
-drop policy if exists "buddy_erp_backoffice_authenticated_read" on public.buddy_erp_backoffice;
-create policy "buddy_erp_backoffice_authenticated_read"
+drop policy if exists "buddy_erp_backoffice_app_read" on public.buddy_erp_backoffice;
+create policy "buddy_erp_backoffice_app_read"
   on public.buddy_erp_backoffice
   for select
-  to authenticated
+  to anon, authenticated
   using (true);
 
-drop policy if exists "buddy_erp_backoffice_authenticated_write" on public.buddy_erp_backoffice;
-create policy "buddy_erp_backoffice_authenticated_write"
+drop policy if exists "buddy_erp_backoffice_app_write" on public.buddy_erp_backoffice;
+create policy "buddy_erp_backoffice_app_write"
   on public.buddy_erp_backoffice
   for all
-  to authenticated
+  to anon, authenticated
   using (true)
   with check (true);
 

@@ -51,8 +51,8 @@ export function useSupabase(db: AppDatabase, setDb: (db: AppDatabase) => void) {
         setStatus('connecting');
         const supabase = createClient(url.trim(), anonKey.trim(), {
           auth: {
-            persistSession: true,
-            autoRefreshToken: true,
+            persistSession: false,
+            autoRefreshToken: false,
             detectSessionInUrl: false
           }
         });
