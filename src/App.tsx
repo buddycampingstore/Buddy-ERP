@@ -25,7 +25,6 @@ import {
   X,
   FileDown,
   FileUp,
-  RotateCcw,
   LogOut
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
@@ -52,7 +51,6 @@ export default function App() {
     deleteOrder,
     updateDelivery,
     importBackup,
-    clearData,
     loading,
     error
   } = useAppData();
@@ -115,19 +113,6 @@ export default function App() {
       }
     };
     fileReader.readAsText(file);
-  };
-
-  const handleClearAllSystemData = async () => {
-    requireDeleteAuth({
-      title: 'ยืนยันการลบข้อมูลระบบทั้งหมด',
-      message: 'การดำเนินการนี้จะลบสินค้า ออเดอร์ ลูกค้า สต็อก และข้อมูลทั้งหมดออกจาก Supabase แบบถาวร กรุณากรอกรหัสผ่าน Supabase เพื่อยืนยัน',
-      confirmLabel: 'ยืนยันลบทั้งหมด',
-      onConfirm: async () => {
-        await clearData();
-        alert('ระบบทำการลบข้อมูลทั้งหมดเรียบร้อยแล้ว ปัจจุบันข้อมูลว่างเปล่าสมบูรณ์!');
-        setActiveTab('dashboard');
-      }
-    });
   };
 
   if (loading) {
@@ -270,26 +255,6 @@ export default function App() {
                     กู้คืนข้อมูลจากโค้ด
                   </button>
                 </form>
-              </div>
-
-              {/* Advanced Administration Reset Panel */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs space-y-4 md:col-span-2">
-                <h3 className="font-bold text-rose-600 text-sm flex items-center gap-1.5 border-b border-rose-50 pb-2">
-                  <RotateCcw className="w-4.5 h-4.5 text-rose-500" />
-                  ลบทำความสะอาดข้อมูลระบบทั้งหมด (Clear Data)
-                </h3>
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-xs text-slate-500">
-                  <p className="max-w-xl leading-relaxed">
-                    ฟังก์ชันนี้จะทำการลบข้อมูลการขาย ออเดอร์ แบรนด์ รุ่น คลังสินค้า ยอด WAC และรายการลูกค้าทั้งหมดออกจากระบบอย่างถาวรทันทีแบบไม่มีข้อมูลใดๆ หลงเหลืออยู่
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleClearAllSystemData}
-                    className="bg-rose-100 hover:bg-rose-200 text-rose-700 border border-rose-200 font-bold py-2.5 px-5 rounded-xl text-xs transition-colors cursor-pointer whitespace-nowrap self-start sm:self-center animate-pulse"
-                  >
-                    ลบข้อมูลระบบทั้งหมดทันที
-                  </button>
-                </div>
               </div>
 
             </div>
