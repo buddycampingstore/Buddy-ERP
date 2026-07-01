@@ -58,16 +58,16 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
   const [otherCost, setOtherCost] = useState<number>(0);
   const [note, setNote] = useState('');
   const [items, setItems] = useState<NewBatchItem[]>([
-    { variant_id: data.variants[0]?.id || '', qty: 5, unit_price: 1500 }
+    { variant_id: data.variants[0]?.id || '', qty: 0, unit_price: 1500 }
   ]);
 
-  const numberInputValue = (value: number) => value === 0 ? '' : value;
+  const optionalNumberInputValue = (value: number) => value === 0 ? '' : value;
 
   // --- HANDLERS ---
   const handleAddItemRow = () => {
     setItems([
       ...items,
-      { variant_id: data.variants[0]?.id || '', qty: 5, unit_price: 1500 }
+      { variant_id: data.variants[0]?.id || '', qty: 0, unit_price: 1500 }
     ]);
   };
 
@@ -106,7 +106,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
         setShippingCost(0);
         setOtherCost(0);
         setNote('');
-        setItems([{ variant_id: data.variants[0]?.id || '', qty: 5, unit_price: 1500 }]);
+        setItems([{ variant_id: data.variants[0]?.id || '', qty: 0, unit_price: 1500 }]);
       }
     } catch (err: any) {
       alert(`บันทึกรับเข้าไม่สำเร็จ: ${err.message || err}`);
@@ -182,7 +182,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                   type="number"
                   min="0"
                   required
-                  value={numberInputValue(shippingCost)}
+                  value={shippingCost}
                   onChange={(e) => setShippingCost(Math.max(0, parseFloat(e.target.value) || 0))}
                   placeholder="0.00"
                   className="w-full text-xs p-3 bg-slate-50 outline-hidden border border-slate-200 rounded-xl focus:border-emerald-700 focus:bg-white text-slate-800 font-mono font-semibold"
@@ -195,7 +195,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                   type="number"
                   min="0"
                   required
-                  value={numberInputValue(otherCost)}
+                  value={otherCost}
                   onChange={(e) => setOtherCost(Math.max(0, parseFloat(e.target.value) || 0))}
                   placeholder="0.00"
                   className="w-full text-xs p-3 bg-slate-50 outline-hidden border border-slate-200 rounded-xl focus:border-emerald-700 focus:bg-white text-slate-800 font-mono font-semibold"
@@ -369,8 +369,8 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                               <input
                                 type="number"
                                 min="1"
-                                value={numberInputValue(item.qty)}
-                                onChange={(e) => handleUpdateItemRow(idx, 'qty', Math.max(1, parseInt(e.target.value) || 0))}
+                                value={optionalNumberInputValue(item.qty)}
+                                onChange={(e) => handleUpdateItemRow(idx, 'qty', Math.max(0, parseInt(e.target.value) || 0))}
                                 className="w-full text-xs p-2.5 md:p-2 bg-white outline-hidden border border-slate-200 rounded-lg text-slate-800 font-mono text-left md:text-center focus:border-emerald-700"
                                 required
                               />
@@ -382,7 +382,8 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                               <input
                                 type="number"
                                 min="0"
-                                value={numberInputValue(item.unit_price)}
+                                step="any"
+                                value={optionalNumberInputValue(item.unit_price)}
                                 onChange={(e) => handleUpdateItemRow(idx, 'unit_price', Math.max(0, parseFloat(e.target.value) || 0))}
                                 className="w-full text-xs p-2.5 md:p-2 bg-white outline-hidden border border-slate-200 rounded-lg text-slate-800 font-mono text-right focus:border-emerald-700"
                                 required
