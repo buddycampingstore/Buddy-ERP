@@ -3,14 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import { useAppData } from './hooks/useAppData';
-import { DashboardView } from './components/DashboardView';
-import { ProductsView } from './components/ProductsView';
-import { PurchaseView } from './components/PurchaseView';
-import { OrdersView } from './components/OrdersView';
-import { DeliveriesView } from './components/DeliveriesView';
-import { ReportsView } from './components/ReportsView';
 import { DeleteAuthDialog, DeleteAuthRequest } from './components/DeleteAuthDialog';
 import { AnimatePresence, motion } from 'motion/react';
 import logoImg from './assets/images/logo_1782269852938.jpg';
@@ -31,18 +25,43 @@ import { supabase } from './lib/supabase';
 
 type TabType = 'dashboard' | 'products' | 'purchase' | 'orders' | 'deliveries' | 'reports' | 'backup';
 
+const DashboardView = React.lazy(() =>
+  import('./components/DashboardView').then((module) => ({ default: module.DashboardView }))
+);
+
+const ProductsView = React.lazy(() =>
+  import('./components/ProductsView').then((module) => ({ default: module.ProductsView }))
+);
+
+const PurchaseView = React.lazy(() =>
+  import('./components/PurchaseView').then((module) => ({ default: module.PurchaseView }))
+);
+
+const OrdersView = React.lazy(() =>
+  import('./components/OrdersView').then((module) => ({ default: module.OrdersView }))
+);
+
+const DeliveriesView = React.lazy(() =>
+  import('./components/DeliveriesView').then((module) => ({ default: module.DeliveriesView }))
+);
+
+const ReportsView = React.lazy(() =>
+  import('./components/ReportsView').then((module) => ({ default: module.ReportsView }))
+);
+
 export default function App() {
   const {
     data,
     addBrand,
     updateBrand,
-    deleteBrand,
+    archiveBrand,
     addModel,
     updateModel,
-    deleteModel,
+    archiveModel,
+    uploadModelImage,
     addVariant,
     updateVariant,
-    deleteVariant,
+    archiveVariant,
     addPurchaseBatch,
     addCustomer,
     updateCustomer,
@@ -72,7 +91,8 @@ export default function App() {
 
   // Export JSON file download
   const handleDownloadBackup = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+    const backupData = { ...data, schema_version: 2 };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute("href", dataStr);
     downloadAnchor.setAttribute("download", `buddy_erp_backup_${new Date().toISOString().split('T')[0]}.json`);
@@ -155,13 +175,14 @@ export default function App() {
             data={data}
             addBrand={addBrand}
             updateBrand={updateBrand}
-            deleteBrand={deleteBrand}
+            archiveBrand={archiveBrand}
             addModel={addModel}
             updateModel={updateModel}
-            deleteModel={deleteModel}
+            archiveModel={archiveModel}
+            uploadModelImage={uploadModelImage}
             addVariant={addVariant}
             updateVariant={updateVariant}
-            deleteVariant={deleteVariant}
+            archiveVariant={archiveVariant}
             requireDeleteAuth={requireDeleteAuth}
           />
         );
@@ -171,6 +192,8 @@ export default function App() {
         return (
           <OrdersView
             data={data}
+            addCustomer={addCustomer}
+            updateCustomer={updateCustomer}
             createOrder={createOrder}
             updateOrderStatus={updateOrderStatus}
             deleteOrder={deleteOrder}
@@ -412,7 +435,9 @@ export default function App() {
             transition={{ duration: 0.12 }}
             className="max-w-6xl mx-auto"
           >
-            {renderActiveView()}
+            <Suspense fallback={<div className="text-sm font-semibold text-slate-500">กำลังโหลดหน้ารายงาน...</div>}>
+              {renderActiveView()}
+            </Suspense>
           </motion.div>
         </AnimatePresence>
       </main>

@@ -42,6 +42,16 @@ interface NewBatchItem {
 }
 
 export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBatch }) => {
+  const activeBrands = data.brands.filter((brand) => brand.is_active !== false);
+  const activeModels = data.models.filter((model) => {
+    const brand = data.brands.find((item) => item.id === model.brand_id);
+    return model.is_active !== false && brand?.is_active !== false;
+  });
+  const activeVariants = data.variants.filter((variant) => {
+    const model = data.models.find((item) => item.id === variant.model_id);
+    const brand = model ? data.brands.find((item) => item.id === model.brand_id) : null;
+    return variant.is_active !== false && model?.is_active !== false && brand?.is_active !== false;
+  });
   const [isAdding, setIsAdding] = useState(false);
   const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null);
 
@@ -58,7 +68,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
   const [otherCost, setOtherCost] = useState<number>(0);
   const [note, setNote] = useState('');
   const [items, setItems] = useState<NewBatchItem[]>([
-    { variant_id: data.variants[0]?.id || '', qty: 0, unit_price: 1500 }
+    { variant_id: activeVariants[0]?.id || '', qty: 0, unit_price: 1500 }
   ]);
 
   const optionalNumberInputValue = (value: number) => value === 0 ? '' : value;
@@ -67,7 +77,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
   const handleAddItemRow = () => {
     setItems([
       ...items,
-      { variant_id: data.variants[0]?.id || '', qty: 0, unit_price: 1500 }
+      { variant_id: activeVariants[0]?.id || '', qty: 0, unit_price: 1500 }
     ]);
   };
 
@@ -106,7 +116,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
         setShippingCost(0);
         setOtherCost(0);
         setNote('');
-        setItems([{ variant_id: data.variants[0]?.id || '', qty: 0, unit_price: 1500 }]);
+        setItems([{ variant_id: activeVariants[0]?.id || '', qty: 0, unit_price: 1500 }]);
       }
     } catch (err: any) {
       alert(`บันทึกรับเข้าไม่สำเร็จ: ${err.message || err}`);
@@ -133,7 +143,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
           {!isAdding ? (
             <button
               onClick={() => {
-                if (data.variants.length === 0) {
+                if (activeVariants.length === 0) {
                   alert('กรุณาเพิ่มรายละเอียดสินค้าสี/รุ่นอย่างน้อย 1 รายการในหน้า "สินค้า" ก่อนบันทึกรับเข้า');
                   return;
                 }
@@ -266,20 +276,20 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                     const activeVariantId = item.variant_id || '';
 
                     // Filter cascading levels
-                    const modelsForBrand = data.models.filter(m => m.brand_id === activeBrandId);
-                    const variantsForModel = data.variants.filter(v => v.model_id === activeModelId);
+                    const modelsForBrand = activeModels.filter(m => m.brand_id === activeBrandId);
+                    const variantsForModel = activeVariants.filter(v => v.model_id === activeModelId);
 
                     // Re-routing changers
                     const handleBrandChange = (bId: string) => {
-                      const brandModels = data.models.filter(m => m.brand_id === bId);
+                      const brandModels = activeModels.filter(m => m.brand_id === bId);
                       const matchedModel = brandModels[0];
-                      const modelVariants = matchedModel ? data.variants.filter(v => v.model_id === matchedModel.id) : [];
+                      const modelVariants = matchedModel ? activeVariants.filter(v => v.model_id === matchedModel.id) : [];
                       const nextVariantId = modelVariants[0]?.id || '';
                       handleUpdateItemRow(idx, 'variant_id', nextVariantId);
                     };
 
                     const handleModelChange = (mId: string) => {
-                      const modelVariants = data.variants.filter(v => v.model_id === mId);
+                      const modelVariants = activeVariants.filter(v => v.model_id === mId);
                       const nextVariantId = modelVariants[0]?.id || '';
                       handleUpdateItemRow(idx, 'variant_id', nextVariantId);
                     };
@@ -324,7 +334,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                                   required
                                 >
                                   <option value="" disabled>-- เลือกยี่ห้อ --</option>
-                                  {data.brands.map(b => (
+                                  {activeBrands.map(b => (
                                     <option key={b.id} value={b.id}>{b.name}</option>
                                   ))}
                                 </select>

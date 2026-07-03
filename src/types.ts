@@ -6,6 +6,8 @@
 export interface Brand {
   id: string;
   name: string;
+  is_active: boolean;
+  archived_at?: string | null;
 }
 
 export interface Model {
@@ -13,6 +15,8 @@ export interface Model {
   brand_id: string;
   name: string;
   image?: string; // Optional image data URL or URL
+  is_active: boolean;
+  archived_at?: string | null;
 }
 
 export interface Variant {
@@ -22,6 +26,8 @@ export interface Variant {
   qty_in_stock: number; // calculated/sync'd count of active in_stock StockItems
   current_wac: number;  // weighted average cost (auto calculated)
   standard_sale_price?: number; // standard selling price of this model/color
+  is_active: boolean;
+  archived_at?: string | null;
 }
 
 export interface PurchaseBatchItem {
@@ -64,7 +70,8 @@ export type DeliveryType = 'shipping' | 'pickup';
 
 export interface Order {
   id: string;
-  customer_id: string;
+  customer_id: string | null;
+  customer_name_snapshot: string;
   date: string; // YYYY-MM-DD
   channel: OrderChannel;
   status: OrderStatus;
@@ -84,6 +91,9 @@ export interface OrderItem {
   final_price: number; // computed: sale_price - discount
   wac_at_sale: number; // snaphotted WAC cost base at time of purchase
   profit: number; // final_price - wac_at_sale
+  brand_name_snapshot: string;
+  model_name_snapshot: string;
+  variant_color_snapshot: string;
 }
 
 export type DeliveryStatus = 'pending' | 'dispatched' | 'delivered';
@@ -98,6 +108,7 @@ export interface Delivery {
 
 // Full application data state stored in LocalStorage
 export interface AppData {
+  schema_version?: number;
   brands: Brand[];
   models: Model[];
   variants: Variant[];

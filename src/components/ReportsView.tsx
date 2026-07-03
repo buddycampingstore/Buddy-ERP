@@ -5,10 +5,18 @@
 
 import React from 'react';
 import { 
-  AppData, 
-  Order, 
-  Variant 
+  AppData
 } from '../types';
+import {
+  getActiveStockValue,
+  getGrossProfit,
+  getNetProfit,
+  getOrderCogs,
+  getOrderProfit,
+  getOrderRevenue,
+  getTotalCogs,
+  getTotalRevenue
+} from '../lib/finance';
 import { 
   TrendingUp, 
   Coins, 
@@ -42,18 +50,13 @@ interface ReportsViewProps {
 export const ReportsView: React.FC<ReportsViewProps> = ({ data }) => {
   // --- 1. DYNAMIC PROFIT & LOSS CALCULATIONS ---
   // A. Total Store Revenue across all orders
-  const totalRevenue = data.orders.reduce((sum, order) => {
-    const subTotal = order.items.reduce((acc, item) => acc + item.final_price, 0);
-    return sum + (subTotal + (order.shipping_fee || 0) - order.discount);
-  }, 0);
+  const totalRevenue = getTotalRevenue(data.orders);
 
   // B. Cost of Goods Sold (COGS) based on snapshotted WAC_at_sale (snapshot is preserved correctly)
-  const totalCogs = data.orders.reduce((sum, order) => {
-    return sum + order.items.reduce((acc, item) => acc + item.wac_at_sale, 0);
-  }, 0);
+  const totalCogs = getTotalCogs(data.orders);
 
   // C. Gross Profit
-  const grossProfit = totalRevenue - totalCogs;
+  const grossProfit = getGrossProfit(data.orders);
 
   // D. Batch shipping/unloading overhead expenses (Overhead in purchase batches)
   const totalOverheadExpense = data.purchaseBatches.reduce((sum, batch) => {
@@ -66,19 +69,19 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ data }) => {
   }, 0);
 
   // E. Net Profit (True bottom line)
-  const netProfit = grossProfit - totalOverheadExpense - totalOrderShippingCostsPaid;
+  const netProfit = getNetProfit(data.orders);
 
   // --- 2. STOCK REMAINING VALUE ---
   const activeStockItems = data.stockItems.filter(item => item.status === 'in_stock');
-  const inventoryTotalVal = activeStockItems.reduce((sum, item) => sum + item.wac_cost, 0);
+  const inventoryTotalVal = getActiveStockValue(data.stockItems);
 
   // --- 3. RECHARTS: SALES & EXPENSE MONTH-BY-MONTH ---
   // Collect month keys automatically
   const monthlyDataMap = data.orders.reduce((acc, o) => {
-    const month = o.date.substring(0, 7); // e.g. "2026-06"
-    const orderTotal = o.items.reduce((total, item) => total + item.final_price, 0) + (o.shipping_fee || 0) - o.discount;
-    const orderCogs = o.items.reduce((total, item) => total + item.wac_at_sale, 0) + (o.shipping_cost || 0);
-    const orderProfit = orderTotal - orderCogs;
+    const month = o.date.substring(0, 7);
+    const orderTotal = getOrderRevenue(o);
+    const orderCogs = getOrderCogs(o);
+    const orderProfit = getOrderProfit(o);
 
     if (!acc[month]) {
       acc[month] = { sales: 0, profit: 0 };
@@ -92,7 +95,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ data }) => {
   // Convert map to array sorted by month key
   const monthlyChartData = (Object.entries(monthlyDataMap) as [string, { sales: number; profit: number }][])
     .map(([month, data]) => ({
-      month: month === '2026-06' ? 'มิ.ย. 69' : month,
+      month,
       'ยอดขาย (บาท)': Math.round(data.sales),
       'กำไรขั้นต้น (บาท)': Math.round(data.profit)
     }))
@@ -104,7 +107,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ data }) => {
       const variant = data.variants.find(v => v.id === item.variant_id);
       const model = variant ? data.models.find(m => m.id === variant.model_id) : null;
       const brand = model ? data.brands.find(b => b.id === model.brand_id) : null;
-      const brandName = brand?.name || 'อิสระ';
+      const brandName = brand?.name || item.brand_name_snapshot || 'ไม่ระบุแบรนด์';
 
       if (!acc[brandName]) {
         acc[brandName] = { sales: 0, qty: 0 };
@@ -191,8 +194,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ data }) => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
             <div className="space-y-1">
               <span className="text-slate-400 font-medium">4. หักค่าโสหุ้ยสะสม (ค่าจัดส่งนำเข้า/ภาษีนำเข้าล็อต) (-)</span>
-              <h4 className="text-sm font-semibold text-rose-400 font-mono">
-                - ฿{totalOverheadExpense.toLocaleString('th-TH', { minimumFractionDigits: 1 })}
+              <h4 className="text-sm font-semibold text-amber-300 font-mono">
+                ฿{totalOverheadExpense.toLocaleString('th-TH', { minimumFractionDigits: 1 })}
               </h4>
               <p className="text-[10px] italic text-slate-500">ค่าขนส่งและค่าผ่านพิธีการนำเข้าที่บันทึกมากับล็อตซื้อของ</p>
             </div>

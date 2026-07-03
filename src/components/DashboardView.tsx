@@ -5,10 +5,17 @@
 
 import React from 'react';
 import { 
-  AppData, 
-  Order, 
-  Variant 
+  AppData
 } from '../types';
+import {
+  filterOrdersByYearMonth,
+  filterPurchaseBatchesByYearMonth,
+  getActiveStockValue,
+  getLocalYearMonth,
+  getOrderProfit,
+  getOrderRevenue,
+  getTotalPurchaseCost
+} from '../lib/finance';
 import { 
   TrendingUp, 
   Package, 
@@ -40,35 +47,20 @@ interface DashboardViewProps {
 export const DashboardView: React.FC<DashboardViewProps> = ({ data, onNavigate }) => {
   // 1. Inventory Summary
   const totalStockUnits = data.stockItems.filter(item => item.status === 'in_stock').length;
-  const totalInventoryCost = data.stockItems
-    .filter(item => item.status === 'in_stock')
-    .reduce((sum, item) => sum + item.wac_cost, 0);
+  const totalInventoryCost = getActiveStockValue(data.stockItems);
 
   // 2. Active Orders (non-delivered, non-pending? Wait! let's say 'pending', 'confirmed', 'shipped' are active/outstanding)
   const outstandingOrders = data.orders.filter(o => o.status !== 'delivered');
 
-  // 3. Profit/Sales This Month (June 2026 based on mock data timeline or current date)
-  // Let's filter orders for the latest active month in dataset (June 2026 is our timeline)
-  const currentYearMonth = '2026-06'; // Since the current mock datetime is 2026-06-23
+  const currentYearMonth = getLocalYearMonth();
 
-  const monthOrders = data.orders.filter(o => o.date.startsWith(currentYearMonth));
-  const monthSales = monthOrders.reduce((sum, o) => {
-    const orderTotal = o.items.reduce((total, item) => total + item.final_price, 0);
-    return sum + (orderTotal + (o.shipping_fee || 0) - o.discount);
-  }, 0);
+  const monthOrders = filterOrdersByYearMonth(data.orders, currentYearMonth);
+  const monthSales = monthOrders.reduce((sum, order) => sum + getOrderRevenue(order), 0);
 
-  const monthProfit = monthOrders.reduce((sum, o) => {
-    const itemsProfit = o.items.reduce((total, item) => total + item.profit, 0);
-    return sum + (itemsProfit + (o.shipping_fee || 0) - (o.shipping_cost || 0) - o.discount);
-  }, 0);
+  const monthProfit = monthOrders.reduce((sum, order) => sum + getOrderProfit(order), 0);
 
   // 4. Monthly Purchase Cost this month
-  const monthPurchase = data.purchaseBatches
-    .filter(p => p.date.startsWith(currentYearMonth))
-    .reduce((sum, p) => {
-      const itemsCost = p.items.reduce((total, item) => total + (item.qty * item.unit_price), 0);
-      return sum + itemsCost + p.shipping_cost + p.other_cost;
-    }, 0);
+  const monthPurchase = getTotalPurchaseCost(filterPurchaseBatchesByYearMonth(data.purchaseBatches, currentYearMonth));
 
   // Recent Orders (last 5)
   const recentOrders = [...data.orders]
@@ -90,7 +82,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data, onNavigate }
   // Recharts: Sales by Channel
   const channelDataMap = data.orders.reduce((acc, o) => {
     const channelName = o.channel === 'fb' ? 'Facebook' : o.channel === 'ig' ? 'Instagram' : 'อื่นๆ';
-    const orderTotal = o.items.reduce((total, item) => total + item.final_price, 0) + (o.shipping_fee || 0) - o.discount;
+    const orderTotal = getOrderRevenue(o);
     acc[channelName] = (acc[channelName] || 0) + orderTotal;
     return acc;
   }, {} as Record<string, number>);
@@ -105,7 +97,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data, onNavigate }
   // Recharts: Sales Trend
   const dailySalesMap = data.orders.reduce((acc, o) => {
     const day = o.date; // YYYY-MM-DD
-    const orderTotal = o.items.reduce((total, item) => total + item.final_price, 0) + (o.shipping_fee || 0) - o.discount;
+    const orderTotal = getOrderRevenue(o);
     acc[day] = (acc[day] || 0) + orderTotal;
     return acc;
   }, {} as Record<string, number>);
@@ -128,7 +120,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data, onNavigate }
           <p className="text-slate-500 text-sm">ภาพรวมข้อมูลคลังสินค้า ยอดขาย และสถานะงานประจำวัน</p>
         </div>
         <div className="mt-2 md:mt-0 text-xs bg-emerald-50 text-emerald-800 font-mono py-1 px-3 rounded-full border border-emerald-100 self-start">
-          รอบบัญชีปัจจุบัน: {currentYearMonth} (มิ.ย. 2569)
+          รอบบัญชีปัจจุบัน: {currentYearMonth}
         </div>
       </div>
 
@@ -207,7 +199,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data, onNavigate }
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs lg:col-span-2 flex flex-col" id="chart-trend-card">
           <h3 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-emerald-700" />
-            แนวโน้มยอดขายมิถุนายน 2569
+            แนวโน้มยอดขายรายวัน
           </h3>
           <div className="h-64 w-full flex-1">
             {salesTrendData.length > 0 ? (
@@ -290,7 +282,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data, onNavigate }
               <tbody className="divide-y divide-slate-100">
                 {recentOrders.length > 0 ? (
                   recentOrders.map(order => {
-                    const totalVal = order.items.reduce((sum, item) => sum + item.final_price, 0) - order.discount;
+                    const totalVal = getOrderRevenue(order);
                     
                     // State coloring
                     const statusClassMap = {

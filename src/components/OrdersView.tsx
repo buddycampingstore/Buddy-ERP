@@ -6,13 +6,13 @@
 import React, { useState } from 'react';
 import { 
   AppData, 
-  Order, 
   Customer, 
   OrderChannel, 
   OrderStatus, 
   DeliveryType 
 } from '../types';
 import { DeleteAuthRequest } from './DeleteAuthDialog';
+import { getOrderProfit, getOrderRevenue, getOrderSubtotal } from '../lib/finance';
 import { 
   Plus, 
   Trash2, 
@@ -32,8 +32,11 @@ import {
 
 interface OrdersViewProps {
   data: AppData;
+  addCustomer: (customerData: Omit<Customer, 'id'>) => Promise<Customer>;
+  updateCustomer: (id: string, customerData: Omit<Customer, 'id'>) => Promise<void>;
   createOrder: (orderData: {
-    customer_id: string;
+    customer_id?: string | null;
+    customer_name_snapshot?: string;
     date: string;
     channel: OrderChannel;
     status: OrderStatus;
@@ -57,11 +60,26 @@ interface NewOrderItem {
 
 export const OrdersView: React.FC<OrdersViewProps> = ({
   data,
+  addCustomer,
+  updateCustomer,
   createOrder,
   updateOrderStatus,
   deleteOrder,
   requireDeleteAuth
 }) => {
+  void updateCustomer;
+
+  const activeBrands = data.brands.filter((brand) => brand.is_active !== false);
+  const activeModels = data.models.filter((model) => {
+    const brand = data.brands.find((item) => item.id === model.brand_id);
+    return model.is_active !== false && brand?.is_active !== false;
+  });
+  const activeVariants = data.variants.filter((variant) => {
+    const model = data.models.find((item) => item.id === variant.model_id);
+    const brand = model ? data.brands.find((item) => item.id === model.brand_id) : null;
+    return variant.is_active !== false && model?.is_active !== false && brand?.is_active !== false;
+  });
+
   const [isAdding, setIsAdding] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -81,6 +99,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const [globalDiscount, setGlobalDiscount] = useState<number>(0);
   const [shippingFee, setShippingFee] = useState<number>(0);
   const [shippingCost, setShippingCost] = useState<number>(0);
+  const [showCustomerForm, setShowCustomerForm] = useState(false);
+  const [savingCustomer, setSavingCustomer] = useState(false);
+  const [customerDraft, setCustomerDraft] = useState<Omit<Customer, 'id'>>({
+    name: '',
+    phone: '',
+    facebook: '',
+    note: ''
+  });
   const [items, setItems] = useState<NewOrderItem[]>([
     { variant_id: '', qty: 1, sale_price: 2200, discount: 0 }
   ]);
@@ -89,17 +115,17 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
   // Set first variant as default on open
   React.useEffect(() => {
-    if (isAdding && data.variants.length > 0 && !items[0].variant_id) {
-      const v0 = data.variants[0];
+    if (isAdding && activeVariants.length > 0 && !items[0].variant_id) {
+      const v0 = activeVariants[0];
       const defaultPrice = (v0 && v0.standard_sale_price !== undefined) ? v0.standard_sale_price : 2200;
       setItems([{ variant_id: v0.id, qty: 1, sale_price: defaultPrice, discount: 0 }]);
     }
-  }, [isAdding, data.variants, items]);
+  }, [isAdding, activeVariants, items]);
 
   // --- FORM HANDLERS ---
   const handleAddItemRow = () => {
-    const firstId = data.variants[0]?.id || '';
-    const v = data.variants.find(variant => variant.id === firstId);
+    const firstId = activeVariants[0]?.id || '';
+    const v = activeVariants.find(variant => variant.id === firstId);
     const defaultPrice = (v && v.standard_sale_price !== undefined) ? v.standard_sale_price : 2200;
     setItems([...items, { variant_id: firstId, qty: 1, sale_price: defaultPrice, discount: 0 }]);
   };
@@ -118,7 +144,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         };
         // Auto-fill standard sale price when variant is selected
         if (field === 'variant_id') {
-          const v = data.variants.find(variant => variant.id === value);
+          const v = activeVariants.find(variant => variant.id === value);
           if (v && v.standard_sale_price !== undefined) {
             updated.sale_price = v.standard_sale_price;
           }
@@ -129,16 +155,41 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     }));
   };
 
+  const handleSaveCustomer = async () => {
+    if (!customerDraft.name.trim()) {
+      alert('กรุณากรอกชื่อลูกค้า');
+      return;
+    }
+
+    setSavingCustomer(true);
+    try {
+      const created = await addCustomer(customerDraft);
+      setCustomerId(created.id);
+      setCustomerDraft({ name: '', phone: '', facebook: '', note: '' });
+      setShowCustomerForm(false);
+    } catch (err: any) {
+      alert(`สร้างลูกค้าไม่สำเร็จ: ${err.message || err}`);
+    } finally {
+      setSavingCustomer(false);
+    }
+  };
+
   const handleSaveOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (items.some(item => !item.variant_id)) {
       alert('กรุณาเลือกโมเดลเก้าอี้และตัวเลือกสินค้าให้ครบทุกแถว');
       return;
     }
+    if (items.some(item => item.qty <= 0 || item.sale_price < 0 || item.discount < 0 || item.discount > item.sale_price)) {
+      alert('กรุณาตรวจจำนวน ราคา และส่วนลดของสินค้าแต่ละรายการ');
+      return;
+    }
 
     try {
+      const selectedCustomer = data.customers.find(customer => customer.id === customerId);
       await createOrder({
-        customer_id: 'general',
+        customer_id: customerId === 'general' ? null : customerId,
+        customer_name_snapshot: selectedCustomer?.name || 'ลูกค้าทั่วไป',
         date,
         channel,
         status,
@@ -160,7 +211,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       setGlobalDiscount(0);
       setShippingFee(0);
       setShippingCost(0);
-      const defaultVariant = data.variants[0];
+      const defaultVariant = activeVariants[0];
       const defaultPrice = (defaultVariant && defaultVariant.standard_sale_price !== undefined) ? defaultVariant.standard_sale_price : 2200;
       setItems([{ variant_id: defaultVariant?.id || '', qty: 1, sale_price: defaultPrice, discount: 0 }]);
     } catch (err: any) {
@@ -170,7 +221,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
   // --- REAL-TIME CALCULATIONS ---
   const calculatedItems = items.map(item => {
-    const variant = data.variants.find(v => v.id === item.variant_id);
+    const variant = activeVariants.find(v => v.id === item.variant_id);
     const wac = variant?.current_wac || 0;
     const itemTotal = (item.sale_price - item.discount) * item.qty;
     const costBasisTotal = wac * item.qty;
@@ -201,14 +252,21 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       const searchLow = searchQuery.toLowerCase();
       
       const matchId = order.id.toLowerCase().includes(searchLow);
+      const matchCustomer = (order.customer_name_snapshot || '').toLowerCase().includes(searchLow);
       
       const matchItems = order.items.some(oi => {
         const v = data.variants.find(varItem => varItem.id === oi.variant_id);
         const m = v ? data.models.find(mod => mod.id === v.model_id) : null;
-        return m?.name.toLowerCase().includes(searchLow) || v?.color.toLowerCase().includes(searchLow);
+        return (
+          m?.name.toLowerCase().includes(searchLow) ||
+          v?.color.toLowerCase().includes(searchLow) ||
+          oi.model_name_snapshot.toLowerCase().includes(searchLow) ||
+          oi.variant_color_snapshot.toLowerCase().includes(searchLow) ||
+          oi.brand_name_snapshot.toLowerCase().includes(searchLow)
+        );
       });
 
-      return matchId || matchItems;
+      return matchId || matchCustomer || matchItems;
     }
 
     return true;
@@ -290,6 +348,75 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                     className="w-full text-xs p-2.5 pl-9 bg-slate-50 outline-hidden border border-slate-200 rounded-xl text-slate-800"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">ลูกค้า</label>
+                <div className="flex gap-2">
+                  <select
+                    value={customerId}
+                    onChange={(event) => setCustomerId(event.target.value)}
+                    className="min-w-0 flex-1 text-xs p-3 bg-slate-50 outline-hidden border border-slate-200 rounded-xl text-slate-800"
+                  >
+                    <option value="general">ลูกค้าทั่วไป / ไม่ระบุชื่อ</option>
+                    {data.customers.map((customer) => (
+                      <option key={customer.id} value={customer.id}>
+                        {customer.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomerForm((value) => !value)}
+                    className="shrink-0 px-3 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800"
+                    title="เพิ่มลูกค้า"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {showCustomerForm && (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                    <input
+                      type="text"
+                      value={customerDraft.name}
+                      onChange={(event) => setCustomerDraft((prev) => ({ ...prev, name: event.target.value }))}
+                      placeholder="ชื่อลูกค้า"
+                      className="w-full text-xs p-2.5 bg-white outline-hidden border border-slate-200 rounded-lg"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        value={customerDraft.phone}
+                        onChange={(event) => setCustomerDraft((prev) => ({ ...prev, phone: event.target.value }))}
+                        placeholder="เบอร์โทร"
+                        className="w-full text-xs p-2.5 bg-white outline-hidden border border-slate-200 rounded-lg"
+                      />
+                      <input
+                        type="text"
+                        value={customerDraft.facebook}
+                        onChange={(event) => setCustomerDraft((prev) => ({ ...prev, facebook: event.target.value }))}
+                        placeholder="Facebook/ช่องทางติดต่อ"
+                        className="w-full text-xs p-2.5 bg-white outline-hidden border border-slate-200 rounded-lg"
+                      />
+                    </div>
+                    <textarea
+                      rows={2}
+                      value={customerDraft.note}
+                      onChange={(event) => setCustomerDraft((prev) => ({ ...prev, note: event.target.value }))}
+                      placeholder="หมายเหตุ"
+                      className="w-full text-xs p-2.5 bg-white outline-hidden border border-slate-200 rounded-lg"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveCustomer}
+                      disabled={savingCustomer}
+                      className="w-full py-2 rounded-lg bg-emerald-700 disabled:bg-slate-300 text-white text-xs font-bold"
+                    >
+                      {savingCustomer ? 'กำลังบันทึกลูกค้า...' : 'บันทึกลูกค้าใหม่'}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Channel */}
@@ -414,33 +541,33 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                 {/* Rows mapped */}
                 <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
                   {items.map((item, idx) => {
-                    const variant = data.variants.find(v => v.id === item.variant_id);
+                    const variant = activeVariants.find(v => v.id === item.variant_id);
                     const stockOnHand = data.stockItems.filter(s => s.variant_id === item.variant_id && s.status === 'in_stock').length;
                     const error = stockOnHand < item.qty;
 
                     // Resolve current parent hierarchy for Brand -> Model -> Variant
-                    const currentModel = variant ? data.models.find(m => m.id === variant.model_id) : null;
-                    const currentBrand = currentModel ? data.brands.find(b => b.id === currentModel.brand_id) : null;
+                    const currentModel = variant ? activeModels.find(m => m.id === variant.model_id) : null;
+                    const currentBrand = currentModel ? activeBrands.find(b => b.id === currentModel.brand_id) : null;
 
                     const activeBrandId = currentBrand?.id || '';
                     const activeModelId = currentModel?.id || '';
                     const activeVariantId = item.variant_id || '';
 
                     // Filter cascading levels
-                    const modelsForBrand = data.models.filter(m => m.brand_id === activeBrandId);
-                    const variantsForModel = data.variants.filter(v => v.model_id === activeModelId);
+                    const modelsForBrand = activeModels.filter(m => m.brand_id === activeBrandId);
+                    const variantsForModel = activeVariants.filter(v => v.model_id === activeModelId);
 
                     // Re-routing changers
                     const handleBrandChange = (bId: string) => {
-                      const brandModels = data.models.filter(m => m.brand_id === bId);
+                      const brandModels = activeModels.filter(m => m.brand_id === bId);
                       const matchedModel = brandModels[0];
-                      const modelVariants = matchedModel ? data.variants.filter(v => v.model_id === matchedModel.id) : [];
+                      const modelVariants = matchedModel ? activeVariants.filter(v => v.model_id === matchedModel.id) : [];
                       const nextVariantId = modelVariants[0]?.id || '';
                       handleUpdateItemRow(idx, 'variant_id', nextVariantId);
                     };
 
                     const handleModelChange = (mId: string) => {
-                      const modelVariants = data.variants.filter(v => v.model_id === mId);
+                      const modelVariants = activeVariants.filter(v => v.model_id === mId);
                       const nextVariantId = modelVariants[0]?.id || '';
                       handleUpdateItemRow(idx, 'variant_id', nextVariantId);
                     };
@@ -486,7 +613,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                                   required
                                 >
                                   <option value="" disabled>-- เลือกยี่ห้อ --</option>
-                                  {data.brands.map(b => (
+                                  {activeBrands.map(b => (
                                     <option key={b.id} value={b.id}>{b.name}</option>
                                   ))}
                                 </select>
@@ -711,10 +838,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
           <div className="space-y-3" id="orders-grid">
             {filteredOrders.length > 0 ? (
               filteredOrders.map(order => {
-                // No customer tracking
-                const orderSubTotal = order.items.reduce((sum, item) => sum + item.final_price, 0);
-                const orderNetAmount = orderSubTotal + (order.shipping_fee || 0) - order.discount;
-                const totalBatchProfit = order.items.reduce((sum, item) => sum + item.profit, 0) + (order.shipping_fee || 0) - (order.shipping_cost || 0) - order.discount;
+                const orderSubTotal = getOrderSubtotal(order);
+                const orderNetAmount = getOrderRevenue(order);
+                const totalBatchProfit = getOrderProfit(order);
 
                 return (
                   <div 
@@ -764,12 +890,19 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                       </div>
 
                       {/* Line Items display */}
+                      <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-slate-400" />
+                        {order.customer_name_snapshot || 'ลูกค้าทั่วไป'}
+                      </div>
                       <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-[11px] space-y-1">
                         <strong className="text-slate-500 block mb-1">รายการเก้าอี้ในบิล ({order.items.length} ตัว):</strong>
                         {order.items.map((oi, idx) => {
                           const variant = data.variants.find(v => v.id === oi.variant_id);
                           const model = variant ? data.models.find(m => m.id === variant.model_id) : null;
                           const brand = model ? data.brands.find(b => b.id === model.brand_id) : null;
+                          const displayModelName = model?.name || oi.model_name_snapshot || 'สินค้าเดิม';
+                          const displayVariantColor = variant?.color || oi.variant_color_snapshot || '-';
+                          const displayBrandName = brand?.name || oi.brand_name_snapshot || 'เก้าอี้';
                           return (
                             <div key={idx} className="flex items-center justify-between gap-3 text-slate-700 border-b border-slate-100 last:border-b-0 py-1.5 first:pt-0 last:pb-0">
                               <div className="flex items-center gap-2 min-w-0">
@@ -781,7 +914,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                                     title="คลิกเพื่อขยายดูรูปภาพ"
                                     onClick={() => {
                                       setPreviewImage(model.image || null);
-                                      setPreviewTitle(`${brand?.name || 'เก้าอี้'} ${model.name}`);
+                                      setPreviewTitle(`${displayBrandName} ${displayModelName}`);
                                     }}
                                   />
                                 ) : (
@@ -790,7 +923,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                                   </div>
                                 )}
                                 <div className="truncate">
-                                  {model?.name} (<strong className="text-slate-600">{variant?.color}</strong>)
+                                  {displayModelName} (<strong className="text-slate-600">{displayVariantColor}</strong>)
                                 </div>
                               </div>
                               <span className="font-mono text-right shrink-0">
