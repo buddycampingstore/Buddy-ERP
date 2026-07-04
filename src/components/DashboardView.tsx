@@ -4,19 +4,7 @@
  */
 
 import React from 'react';
-import { 
-  AppData
-} from '../types';
-import {
-  filterOrdersByYearMonth,
-  filterPurchaseBatchesByYearMonth,
-  getLocalYearMonth,
-  getOrderProfit,
-  getOrderRevenue,
-  getStockSummaryQty,
-  getStockSummaryValue,
-  getTotalPurchaseCost
-} from '../lib/finance';
+import { DashboardSummary } from '../types';
 import { 
   TrendingUp, 
   Package, 
@@ -41,74 +29,29 @@ import {
 } from 'recharts';
 
 interface DashboardViewProps {
-  data: AppData;
+  summary: DashboardSummary | null;
   onNavigate: (tab: string) => void;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ data, onNavigate }) => {
-  // 1. Inventory Summary
-  const totalStockUnits = getStockSummaryQty(data.stockSummary);
-  const totalInventoryCost = getStockSummaryValue(data.stockSummary);
-
-  // 2. Active Orders (non-delivered, non-pending? Wait! let's say 'pending', 'confirmed', 'shipped' are active/outstanding)
-  const outstandingOrders = data.orders.filter(o => o.status !== 'delivered');
-
-  const currentYearMonth = getLocalYearMonth();
-
-  const monthOrders = filterOrdersByYearMonth(data.orders, currentYearMonth);
-  const monthSales = monthOrders.reduce((sum, order) => sum + getOrderRevenue(order), 0);
-
-  const monthProfit = monthOrders.reduce((sum, order) => sum + getOrderProfit(order), 0);
-
-  // 4. Monthly Purchase Cost this month
-  const monthPurchase = getTotalPurchaseCost(filterPurchaseBatchesByYearMonth(data.purchaseBatches, currentYearMonth));
-
-  // Recent Orders (last 5)
-  const recentOrders = [...data.orders]
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 5);
-
-  // Alert: low stock variants (less than 3 items in stock)
-  const lowStockVariants = data.variants
-    .map(v => {
-      const model = data.models.find(m => m.id === v.model_id);
-      const brand = model ? data.brands.find(b => b.id === model.brand_id) : null;
-      return {
-        ...v,
-        name: `${brand?.name || ''} ${model?.name || ''} (${v.color})`
-      };
-    })
-    .filter(v => v.qty_in_stock <= 3);
-
-  // Recharts: Sales by Channel
-  const channelDataMap = data.orders.reduce((acc, o) => {
-    const channelName = o.channel === 'fb' ? 'Facebook' : o.channel === 'ig' ? 'Instagram' : 'อื่นๆ';
-    const orderTotal = getOrderRevenue(o);
-    acc[channelName] = (acc[channelName] || 0) + orderTotal;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const channelChartData = Object.entries(channelDataMap).map(([name, value]) => ({
-    name,
-    value: Math.round(value as number)
-  }));
-
+export const DashboardView: React.FC<DashboardViewProps> = ({ summary, onNavigate }) => {
   const COLORS = ['#047857', '#10b981', '#6ee7b7'];
 
-  // Recharts: Sales Trend
-  const dailySalesMap = data.orders.reduce((acc, o) => {
-    const day = o.date; // YYYY-MM-DD
-    const orderTotal = getOrderRevenue(o);
-    acc[day] = (acc[day] || 0) + orderTotal;
-    return acc;
-  }, {} as Record<string, number>);
+  if (!summary) {
+    return (
+      <div className="min-h-[360px] flex items-center justify-center text-sm font-semibold text-slate-500">
+        กำลังโหลดแดชบอร์ด...
+      </div>
+    );
+  }
 
-  const salesTrendData = Object.entries(dailySalesMap)
-    .map(([date, amount]) => ({
-      date: date.substring(5), // MM-DD
-      'ยอดขาย (บาท)': Math.round(amount as number)
-    }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const totalStockUnits = summary.stock_qty;
+  const totalInventoryCost = summary.stock_value;
+  const monthSales = summary.month_sales;
+  const monthProfit = summary.month_profit;
+  const recentOrders = summary.recent_orders;
+  const lowStockVariants = summary.low_stock_variants;
+  const channelChartData = summary.channel_chart;
+  const salesTrendData = summary.daily_sales;
 
   return (
     <div className="space-y-6" id="dashboard-container">
@@ -121,7 +64,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data, onNavigate }
           <p className="text-slate-500 text-sm">ภาพรวมข้อมูลคลังสินค้า ยอดขาย และสถานะงานประจำวัน</p>
         </div>
         <div className="mt-2 md:mt-0 text-xs bg-emerald-50 text-emerald-800 font-mono py-1 px-3 rounded-full border border-emerald-100 self-start">
-          รอบบัญชีปัจจุบัน: {currentYearMonth}
+          รอบบัญชีปัจจุบัน: {summary.month}
         </div>
       </div>
 
@@ -139,7 +82,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data, onNavigate }
             <h3 className="text-lg md:text-2xl font-bold text-slate-800">
               ฿{monthSales.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
             </h3>
-            <p className="text-xs text-slate-400 mt-1">ออเดอร์มิถุนายนทั้งหมด</p>
+            <p className="text-xs text-slate-400 mt-1">ออเดอร์ในรอบ {summary.month}</p>
           </div>
         </div>
 
@@ -187,7 +130,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data, onNavigate }
           </div>
           <div className="mt-3">
             <h3 className="text-lg md:text-2xl font-bold text-purple-600">
-              {outstandingOrders.length} บิล
+              {summary.pending_orders_count} บิล
             </h3>
             <p className="text-xs text-slate-400 mt-1">ต้องแพ็คจัดส่งหรือรอรับ</p>
           </div>
@@ -283,7 +226,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data, onNavigate }
               <tbody className="divide-y divide-slate-100">
                 {recentOrders.length > 0 ? (
                   recentOrders.map(order => {
-                    const totalVal = getOrderRevenue(order);
+                    const totalVal = order.total;
                     
                     // State coloring
                     const statusClassMap = {

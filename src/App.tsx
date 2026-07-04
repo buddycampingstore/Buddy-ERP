@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { Suspense, useState } from 'react';
+import React, { Suspense, useCallback, useState } from 'react';
 import { useAppData } from './hooks/useAppData';
 import { DeleteAuthDialog, DeleteAuthRequest } from './components/DeleteAuthDialog';
 import { AnimatePresence, motion } from 'motion/react';
@@ -52,6 +52,7 @@ const ReportsView = React.lazy(() =>
 export default function App() {
   const {
     data,
+    dashboardSummary,
     addBrand,
     updateBrand,
     archiveBrand,
@@ -72,6 +73,14 @@ export default function App() {
     importBackup,
     exportBackup,
     loading,
+    loadingDashboard,
+    loadingSlices,
+    loadedSlices,
+    ensureProductsLoaded,
+    ensurePurchaseLoaded,
+    ensureOrdersLoaded,
+    ensureDeliveriesLoaded,
+    ensureReportsLoaded,
     error
   } = useAppData();
 
@@ -89,6 +98,22 @@ export default function App() {
   const requireDeleteAuth = (request: DeleteAuthRequest) => {
     setDeleteAuthRequest(request);
   };
+
+  const openTab = useCallback((tab: TabType) => {
+    setActiveTab(tab);
+
+    if (tab === 'products') void ensureProductsLoaded();
+    if (tab === 'purchase') void ensurePurchaseLoaded();
+    if (tab === 'orders') void ensureOrdersLoaded();
+    if (tab === 'deliveries') void ensureDeliveriesLoaded();
+    if (tab === 'reports') void ensureReportsLoaded();
+  }, [
+    ensureDeliveriesLoaded,
+    ensureOrdersLoaded,
+    ensureProductsLoaded,
+    ensurePurchaseLoaded,
+    ensureReportsLoaded
+  ]);
 
   // Export JSON file download
   const handleDownloadBackup = async () => {
@@ -114,7 +139,7 @@ export default function App() {
     if (res.success) {
       alert('นำเข้าสำรองข้อมูลสำเร็จ คลังได้รับการกู้คืนเรียบร้อย!');
       setBackupInput('');
-      setActiveTab('dashboard');
+      openTab('dashboard');
     } else {
       alert(`นำเข้าล้มเหลว: ${res.error}`);
     }
@@ -131,7 +156,7 @@ export default function App() {
         const res = await importBackup(text);
         if (res.success) {
           alert('นำเข้าไฟล์สำรองข้อมูล JSON สำเร็จ คลังพร้อมขายทันที!');
-          setActiveTab('dashboard');
+          openTab('dashboard');
         } else {
           alert(`ไฟล์สำรองข้อมูลไม่ถูกต้อง: ${res.error}`);
         }
@@ -140,7 +165,7 @@ export default function App() {
     fileReader.readAsText(file);
   };
 
-  if (loading) {
+  if ((loading || loadingDashboard) && !dashboardSummary) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm font-semibold text-slate-600">
         กำลังโหลดข้อมูลจาก Supabase...
@@ -148,7 +173,7 @@ export default function App() {
     );
   }
 
-  if (error) {
+  if (error && !dashboardSummary) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <div className="max-w-md bg-white border border-rose-100 rounded-xl p-6 shadow-sm space-y-3">
@@ -171,10 +196,17 @@ export default function App() {
   ] as const;
 
   const renderActiveView = () => {
+    const sliceLoading = (label: string) => (
+      <div className="min-h-[360px] flex items-center justify-center text-sm font-semibold text-slate-500">
+        {label}
+      </div>
+    );
+
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardView data={data} onNavigate={(tab) => setActiveTab(tab as TabType)} />;
+        return <DashboardView summary={dashboardSummary} onNavigate={(tab) => openTab(tab as TabType)} />;
       case 'products':
+        if (loadingSlices.products && !loadedSlices.products) return sliceLoading('กำลังโหลดข้อมูลสินค้า...');
         return (
           <ProductsView
             data={data}
@@ -192,8 +224,10 @@ export default function App() {
           />
         );
       case 'purchase':
+        if (loadingSlices.purchase && !loadedSlices.purchase) return sliceLoading('กำลังโหลดข้อมูลรับเข้าคลัง...');
         return <PurchaseView data={data} addPurchaseBatch={addPurchaseBatch} />;
       case 'orders':
+        if (loadingSlices.orders && !loadedSlices.orders) return sliceLoading('กำลังโหลดข้อมูลออเดอร์...');
         return (
           <OrdersView
             data={data}
@@ -206,8 +240,10 @@ export default function App() {
           />
         );
       case 'deliveries':
+        if (loadingSlices.deliveries && !loadedSlices.deliveries) return sliceLoading('กำลังโหลดข้อมูลจัดส่ง...');
         return <DeliveriesView data={data} updateDelivery={updateDelivery} />;
       case 'reports':
+        if (loadingSlices.reports && !loadedSlices.reports) return sliceLoading('กำลังโหลดข้อมูลรายงาน...');
         return <ReportsView data={data} />;
       case 'backup':
         return (
@@ -320,7 +356,7 @@ export default function App() {
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveTab(item.id)}
+                onClick={() => openTab(item.id)}
                 className={`w-full py-2.5 px-3.5 rounded-xl font-semibold flex items-center gap-3 transition-all cursor-pointer ${
                   isActive 
                     ? 'bg-slate-100 text-emerald-700 shadow-xs' 
@@ -397,7 +433,7 @@ export default function App() {
                 <button
                   key={item.id}
                   onClick={() => {
-                    setActiveTab(item.id);
+                    openTab(item.id);
                     setMobileMenuOpen(false);
                   }}
                   className={`w-full py-2.5 px-4 rounded-xl font-bold flex items-center gap-3 transition-colors text-left cursor-pointer ${
@@ -455,7 +491,7 @@ export default function App() {
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => openTab(item.id)}
               className={`flex flex-col items-center gap-1 cursor-pointer transition-colors ${
                 isActive ? 'text-emerald-700' : 'text-slate-400 hover:text-slate-600'
               }`}
@@ -467,7 +503,7 @@ export default function App() {
         })}
         {/* Plus quick backoffice anchor toggle or report */}
         <button
-          onClick={() => setActiveTab('reports')}
+          onClick={() => openTab('reports')}
           className={`flex flex-col items-center gap-1 cursor-pointer transition-colors ${
             activeTab === 'reports' ? 'text-emerald-700' : 'text-slate-400 hover:text-slate-600'
           }`}

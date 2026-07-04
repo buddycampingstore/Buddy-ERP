@@ -62,6 +62,44 @@ export interface StockSummary {
   in_stock_value: number;
 }
 
+export interface DashboardRecentOrder {
+  id: string;
+  date: string;
+  channel: OrderChannel;
+  status: OrderStatus;
+  total: number;
+}
+
+export interface DashboardLowStockVariant {
+  id: string;
+  name: string;
+  qty_in_stock: number;
+}
+
+export interface DashboardChannelPoint {
+  name: string;
+  value: number;
+}
+
+export interface DashboardDailySalesPoint {
+  date: string;
+  'ยอดขาย (บาท)': number;
+}
+
+export interface DashboardSummary {
+  month: string;
+  stock_qty: number;
+  stock_value: number;
+  month_sales: number;
+  month_profit: number;
+  month_purchase_cost: number;
+  pending_orders_count: number;
+  recent_orders: DashboardRecentOrder[];
+  low_stock_variants: DashboardLowStockVariant[];
+  channel_chart: DashboardChannelPoint[];
+  daily_sales: DashboardDailySalesPoint[];
+}
+
 export interface Customer {
   id: string;
   name: string;
