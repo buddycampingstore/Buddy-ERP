@@ -9,6 +9,7 @@ import {
   Variant, 
   PurchaseBatch 
 } from '../types';
+import { getVariantStockQty } from '../lib/finance';
 import { 
   Plus, 
   Trash2, 
@@ -262,7 +263,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                     const preWac = selectedVariant?.current_wac || 0;
                     
                     // Forecast new WAC
-                    const qty_เดิม_ตัว = data.stockItems.filter(s => s.variant_id === item.variant_id && s.status === 'in_stock').length;
+                    const qty_เดิม_ตัว = getVariantStockQty(data.stockSummary, item.variant_id);
                     const estNewWac = (qty_เดิม_ตัว + item.qty > 0)
                       ? (qty_เดิม_ตัว * preWac + item.qty * cost_ใหม่_ตัว) / (qty_เดิม_ตัว + item.qty)
                       : cost_ใหม่_ตัว;

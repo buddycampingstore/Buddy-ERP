@@ -8,12 +8,12 @@ import {
   AppData
 } from '../types';
 import {
-  getActiveStockValue,
   getGrossProfit,
   getNetProfit,
   getOrderCogs,
   getOrderProfit,
   getOrderRevenue,
+  getStockSummaryValue,
   getTotalCogs,
   getTotalRevenue
 } from '../lib/finance';
@@ -72,8 +72,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ data }) => {
   const netProfit = getNetProfit(data.orders);
 
   // --- 2. STOCK REMAINING VALUE ---
-  const activeStockItems = data.stockItems.filter(item => item.status === 'in_stock');
-  const inventoryTotalVal = getActiveStockValue(data.stockItems);
+  const inventoryTotalVal = getStockSummaryValue(data.stockSummary);
 
   // --- 3. RECHARTS: SALES & EXPENSE MONTH-BY-MONTH ---
   // Collect month keys automatically

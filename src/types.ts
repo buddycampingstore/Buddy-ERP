@@ -56,6 +56,12 @@ export interface StockItem {
   batch_id: string; // linked to purchase batch
 }
 
+export interface StockSummary {
+  variant_id: string;
+  in_stock_qty: number;
+  in_stock_value: number;
+}
+
 export interface Customer {
   id: string;
   name: string;
@@ -114,6 +120,7 @@ export interface AppData {
   variants: Variant[];
   purchaseBatches: PurchaseBatch[];
   stockItems: StockItem[];
+  stockSummary: StockSummary[];
   customers: Customer[];
   orders: Order[];
   deliveries: Delivery[];

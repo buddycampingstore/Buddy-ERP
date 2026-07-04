@@ -70,6 +70,7 @@ export default function App() {
     deleteOrder,
     updateDelivery,
     importBackup,
+    exportBackup,
     loading,
     error
   } = useAppData();
@@ -90,16 +91,20 @@ export default function App() {
   };
 
   // Export JSON file download
-  const handleDownloadBackup = () => {
-    const backupData = { ...data, schema_version: 2 };
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `buddy_erp_backup_${new Date().toISOString().split('T')[0]}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-    alert('ส่งออกไฟล์สํารองข้อมูล JSON เรียบร้อย!');
+  const handleDownloadBackup = async () => {
+    try {
+      const backupData = await exportBackup();
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `buddy_erp_backup_${new Date().toISOString().split('T')[0]}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      alert('ส่งออกไฟล์สํารองข้อมูล JSON เรียบร้อย!');
+    } catch (err: any) {
+      alert(`ส่งออกไฟล์สำรองไม่สำเร็จ: ${err.message || err}`);
+    }
   };
 
   const handleImportBackup = async (e: React.FormEvent) => {

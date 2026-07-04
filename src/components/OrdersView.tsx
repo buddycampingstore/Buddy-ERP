@@ -12,7 +12,7 @@ import {
   DeliveryType 
 } from '../types';
 import { DeleteAuthRequest } from './DeleteAuthDialog';
-import { getOrderProfit, getOrderRevenue, getOrderSubtotal } from '../lib/finance';
+import { getOrderProfit, getOrderRevenue, getOrderSubtotal, getVariantStockQty } from '../lib/finance';
 import { 
   Plus, 
   Trash2, 
@@ -222,6 +222,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   // --- REAL-TIME CALCULATIONS ---
   const calculatedItems = items.map(item => {
     const variant = activeVariants.find(v => v.id === item.variant_id);
+    const stockOnHand = getVariantStockQty(data.stockSummary, item.variant_id);
     const wac = variant?.current_wac || 0;
     const itemTotal = (item.sale_price - item.discount) * item.qty;
     const costBasisTotal = wac * item.qty;
@@ -232,7 +233,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       wac,
       itemTotal,
       profitTotal,
-      error: variant ? (data.stockItems.filter(s => s.variant_id === item.variant_id && s.status === 'in_stock').length < item.qty) : false
+      error: variant ? stockOnHand < item.qty : false
     };
   });
 
@@ -542,7 +543,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                 <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
                   {items.map((item, idx) => {
                     const variant = activeVariants.find(v => v.id === item.variant_id);
-                    const stockOnHand = data.stockItems.filter(s => s.variant_id === item.variant_id && s.status === 'in_stock').length;
+                    const stockOnHand = getVariantStockQty(data.stockSummary, item.variant_id);
                     const error = stockOnHand < item.qty;
 
                     // Resolve current parent hierarchy for Brand -> Model -> Variant

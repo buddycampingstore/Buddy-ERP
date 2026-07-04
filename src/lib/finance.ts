@@ -1,4 +1,4 @@
-import { Order, PurchaseBatch, StockItem } from '../types';
+import { Order, PurchaseBatch, StockItem, StockSummary } from '../types';
 
 export const getOrderSubtotal = (order: Order) => {
   return order.items.reduce((sum, item) => sum + Number(item.final_price || 0), 0);
@@ -46,6 +46,18 @@ export const getActiveStockValue = (stockItems: StockItem[]) => {
   return stockItems
     .filter((item) => item.status === 'in_stock')
     .reduce((sum, item) => sum + Number(item.wac_cost || 0), 0);
+};
+
+export const getStockSummaryQty = (stockSummary: StockSummary[]) => {
+  return stockSummary.reduce((sum, item) => sum + Number(item.in_stock_qty || 0), 0);
+};
+
+export const getStockSummaryValue = (stockSummary: StockSummary[]) => {
+  return stockSummary.reduce((sum, item) => sum + Number(item.in_stock_value || 0), 0);
+};
+
+export const getVariantStockQty = (stockSummary: StockSummary[], variantId: string) => {
+  return stockSummary.find((item) => item.variant_id === variantId)?.in_stock_qty || 0;
 };
 
 export const getLocalYearMonth = (date = new Date()) => {

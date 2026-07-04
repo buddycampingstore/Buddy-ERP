@@ -10,10 +10,11 @@ import {
 import {
   filterOrdersByYearMonth,
   filterPurchaseBatchesByYearMonth,
-  getActiveStockValue,
   getLocalYearMonth,
   getOrderProfit,
   getOrderRevenue,
+  getStockSummaryQty,
+  getStockSummaryValue,
   getTotalPurchaseCost
 } from '../lib/finance';
 import { 
@@ -46,8 +47,8 @@ interface DashboardViewProps {
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ data, onNavigate }) => {
   // 1. Inventory Summary
-  const totalStockUnits = data.stockItems.filter(item => item.status === 'in_stock').length;
-  const totalInventoryCost = getActiveStockValue(data.stockItems);
+  const totalStockUnits = getStockSummaryQty(data.stockSummary);
+  const totalInventoryCost = getStockSummaryValue(data.stockSummary);
 
   // 2. Active Orders (non-delivered, non-pending? Wait! let's say 'pending', 'confirmed', 'shipped' are active/outstanding)
   const outstandingOrders = data.orders.filter(o => o.status !== 'delivered');

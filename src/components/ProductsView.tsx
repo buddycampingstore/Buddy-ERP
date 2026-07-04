@@ -11,6 +11,7 @@ import {
   Variant 
 } from '../types';
 import { DeleteAuthRequest } from './DeleteAuthDialog';
+import { getVariantStockQty } from '../lib/finance';
 import { 
   Plus, 
   Edit2, 
@@ -181,7 +182,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   };
 
   const handleConfirmDeleteVariant = (id: string, color: string, name: string) => {
-    const count = data.stockItems.filter(item => item.variant_id === id && item.status === 'in_stock').length;
+    const count = getVariantStockQty(data.stockSummary, id);
     const msg = count > 0 
       ? `ตัวเลือกสี "${color}" นี้มีสินค้าค้างอยู่ในสต็อกจริง ${count} ตัว หากลบตัวเลือกนี้ ข้อมูลสต็อกทั้งหมดของตัวเดิมจะถูกล้าง กรุณากรอกรหัสผ่าน Supabase เพื่อยืนยัน`
       : `ต้องการลบตัวเลือกสี "${color}" ของรุ่น "${name}" กรุณากรอกรหัสผ่าน Supabase เพื่อยืนยัน`;
