@@ -4,23 +4,23 @@
  */
 
 import React, { useState } from 'react';
-import { 
-  AppData, 
-  Variant, 
-  PurchaseBatch 
+import {
+  AppData,
+  Variant,
+  PurchaseBatch
 } from '../types';
 import { getVariantStockQty } from '../lib/finance';
-import { 
-  Plus, 
-  Trash2, 
-  Calendar, 
-  DollarSign, 
-  Truck, 
-  ShieldAlert, 
-  Check, 
-  Clock, 
-  ChevronRight, 
-  ChevronDown, 
+import {
+  Plus,
+  Trash2,
+  Calendar,
+  DollarSign,
+  Truck,
+  ShieldAlert,
+  Check,
+  Clock,
+  ChevronRight,
+  ChevronDown,
   Info,
   Image as ImageIcon
 } from 'lucide-react';
@@ -261,7 +261,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                     // Determine cost + overhead
                     const cost_ใหม่_ตัว = item.unit_price + actualOverheadPerUnit;
                     const preWac = selectedVariant?.current_wac || 0;
-                    
+
                     // Forecast new WAC
                     const qty_เดิม_ตัว = getVariantStockQty(data.stockSummary, item.variant_id);
                     const estNewWac = (qty_เดิม_ตัว + item.qty > 0)
@@ -275,6 +275,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                     const activeBrandId = currentBrand?.id || '';
                     const activeModelId = currentModel?.id || '';
                     const activeVariantId = item.variant_id || '';
+                    const currentImage = selectedVariant?.image || currentModel?.image || '';
 
                     // Filter cascading levels
                     const modelsForBrand = activeModels.filter(m => m.brand_id === activeBrandId);
@@ -304,14 +305,14 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                         <div className="flex flex-col md:flex-row md:items-end gap-3.5">
                           {/* Image Thumbnail Selection Preview */}
                           <div className="shrink-0 flex items-center justify-center" id={`purchase-row-image-container-${idx}`}>
-                            {currentModel?.image ? (
-                              <img 
-                                src={currentModel.image} 
-                                className="w-14 h-14 md:w-16 md:h-16 rounded-xl object-cover border border-slate-200 cursor-zoom-in hover:scale-105 active:scale-95 transition-all duration-150 shadow-xs" 
+                            {currentImage ? (
+                              <img
+                                src={currentImage}
+                                className="w-14 h-14 md:w-16 md:h-16 rounded-xl object-cover border border-slate-200 cursor-zoom-in hover:scale-105 active:scale-95 transition-all duration-150 shadow-xs"
                                 referrerPolicy="no-referrer"
                                 title="คลิกเพื่อขยายดูรูปภาพ"
                                 onClick={() => {
-                                  setPreviewImage(currentModel.image || null);
+                                  setPreviewImage(currentImage);
                                   setPreviewTitle(`${currentBrand?.name || 'เก้าอี้'} ${currentModel.name}`);
                                 }}
                               />
@@ -340,7 +341,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                                   ))}
                                 </select>
                               </div>
-                              
+
                               <div>
                                 <label className="block text-xs md:text-[10px] font-semibold text-slate-400 mb-1 uppercase truncate">รุ่น (Model)</label>
                                 <select
@@ -495,12 +496,12 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                 const isExpanded = expandedBatchId === batch.id;
 
                 return (
-                  <div 
-                    key={batch.id} 
+                  <div
+                    key={batch.id}
                     className="bg-white border border-slate-100 rounded-2xl shadow-xs overflow-hidden transition-all duration-200"
                   >
                     {/* Header bar click expands details */}
-                    <div 
+                    <div
                       onClick={() => setExpandedBatchId(isExpanded ? null : batch.id)}
                       className="p-4 flex items-center justify-between hover:bg-slate-50/50 cursor-pointer text-xs"
                     >
@@ -524,7 +525,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                           </div>
                         </div>
                       </div>
-                      
+
                       <div className="flex items-center gap-4">
                         <div className="text-right">
                           <p className="text-[10px] text-slate-400">เงินลงทุนฐาน</p>
@@ -582,6 +583,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                                   const variant = data.variants.find(v => v.id === item.variant_id);
                                   const model = variant ? data.models.find(m => m.id === variant.model_id) : null;
                                   const brand = model ? data.brands.find(b => b.id === model.brand_id) : null;
+                                  const itemImage = variant?.image || model?.image || '';
 
                                   const overheadCalculated = (batch.shipping_cost + batch.other_cost) / totalBatchQty;
                                   const cost_loaded = item.unit_price + overheadCalculated;
@@ -589,14 +591,14 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                                   return (
                                     <tr key={idx} className="border-b last:border-none border-slate-100 hover:bg-slate-50/20">
                                       <td className="py-2.5 px-3 flex items-center gap-2.5">
-                                        {model?.image ? (
-                                          <img 
-                                            src={model.image} 
-                                            className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0 cursor-zoom-in hover:scale-110 active:scale-95 transition-transform" 
+                                        {itemImage ? (
+                                          <img
+                                            src={itemImage}
+                                            className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0 cursor-zoom-in hover:scale-110 active:scale-95 transition-transform"
                                             referrerPolicy="no-referrer"
                                             title="คลิกเพื่อขยายดูรูปภาพ"
                                             onClick={() => {
-                                              setPreviewImage(model.image || null);
+                                              setPreviewImage(itemImage);
                                               setPreviewTitle(`${brand?.name || 'เก้าอี้'} ${model.name}`);
                                             }}
                                           />
@@ -632,25 +634,26 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                               const variant = data.variants.find(v => v.id === item.variant_id);
                               const model = variant ? data.models.find(m => m.id === variant.model_id) : null;
                               const brand = model ? data.brands.find(b => b.id === model.brand_id) : null;
+                              const itemImage = variant?.image || model?.image || '';
 
                               const overheadCalculated = (batch.shipping_cost + batch.other_cost) / totalBatchQty;
                               const cost_loaded = item.unit_price + overheadCalculated;
 
                               return (
-                                <div 
-                                  key={idx} 
+                                <div
+                                  key={idx}
                                   className="bg-white p-3 rounded-xl border border-slate-100 flex items-center justify-between gap-3 shadow-2xs"
                                   id={`batch-item-mobile-${idx}`}
                                 >
                                   <div className="flex items-center gap-2.5 min-w-0">
-                                    {model?.image ? (
-                                      <img 
-                                        src={model.image} 
+                                    {itemImage ? (
+                                      <img
+                                        src={itemImage}
                                         className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0 cursor-zoom-in active:scale-95"
                                         referrerPolicy="no-referrer"
                                         title="คลิกเพื่อขยายดูรูปภาพ"
                                         onClick={() => {
-                                          setPreviewImage(model.image || null);
+                                          setPreviewImage(itemImage);
                                           setPreviewTitle(`${brand?.name || 'เก้าอี้'} ${model.name}`);
                                         }}
                                       />
@@ -702,7 +705,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
 
       {/* --- IMAGE LIGHTBOX MODAL --- */}
       {previewImage && (
-        <div 
+        <div
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center p-4 z-50 animate-fade-in"
           id="image-lightbox-modal"
           onClick={() => setPreviewImage(null)}
@@ -722,12 +725,12 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
           </div>
 
           {/* Interactive Zoomable Image container */}
-          <div 
+          <div
             className="relative w-full max-w-2xl max-h-[75vh] flex items-center justify-center bg-slate-900/50 rounded-2xl overflow-hidden border border-white/10 shadow-2xl animate-slide-up"
             onClick={(e) => e.stopPropagation()}
           >
-            <img 
-              src={previewImage} 
+            <img
+              src={previewImage}
               alt={previewTitle}
               className="max-w-full max-h-[75vh] object-contain rounded-2xl select-none"
               referrerPolicy="no-referrer"

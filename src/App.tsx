@@ -5,7 +5,6 @@
 
 import React, { Suspense, useCallback, useState } from 'react';
 import { useAppData } from './hooks/useAppData';
-import { DeleteAuthDialog, DeleteAuthRequest } from './components/DeleteAuthDialog';
 import { AnimatePresence, motion } from 'motion/react';
 import logoImg from './assets/images/logo_1782269852938.jpg';
 import { 
@@ -13,17 +12,13 @@ import {
   Package, 
   PlusSquare, 
   ShoppingBag, 
-  Truck, 
-  Settings, 
   Menu,
   X,
-  FileDown,
-  FileUp,
   LogOut
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 
-type TabType = 'dashboard' | 'products' | 'purchase' | 'orders' | 'deliveries' | 'reports' | 'backup';
+type TabType = 'dashboard' | 'products' | 'purchase' | 'orders';
 
 const DashboardView = React.lazy(() =>
   import('./components/DashboardView').then((module) => ({ default: module.DashboardView }))
@@ -41,14 +36,6 @@ const OrdersView = React.lazy(() =>
   import('./components/OrdersView').then((module) => ({ default: module.OrdersView }))
 );
 
-const DeliveriesView = React.lazy(() =>
-  import('./components/DeliveriesView').then((module) => ({ default: module.DeliveriesView }))
-);
-
-const ReportsView = React.lazy(() =>
-  import('./components/ReportsView').then((module) => ({ default: module.ReportsView }))
-);
-
 export default function App() {
   const {
     data,
@@ -59,7 +46,7 @@ export default function App() {
     addModel,
     updateModel,
     archiveModel,
-    uploadModelImage,
+    uploadVariantImage,
     addVariant,
     updateVariant,
     archiveVariant,
@@ -70,8 +57,6 @@ export default function App() {
     updateOrderStatus,
     deleteOrder,
     updateDelivery,
-    importBackup,
-    exportBackup,
     loading,
     loadingDashboard,
     loadingSlices,
@@ -79,24 +64,14 @@ export default function App() {
     ensureProductsLoaded,
     ensurePurchaseLoaded,
     ensureOrdersLoaded,
-    ensureDeliveriesLoaded,
-    ensureReportsLoaded,
     error
   } = useAppData();
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [deleteAuthRequest, setDeleteAuthRequest] = useState<DeleteAuthRequest | null>(null);
-
-  // --- BACKUP PANEL STATE ---
-  const [backupInput, setBackupInput] = useState('');
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-  };
-
-  const requireDeleteAuth = (request: DeleteAuthRequest) => {
-    setDeleteAuthRequest(request);
   };
 
   const openTab = useCallback((tab: TabType) => {
@@ -105,65 +80,11 @@ export default function App() {
     if (tab === 'products') void ensureProductsLoaded();
     if (tab === 'purchase') void ensurePurchaseLoaded();
     if (tab === 'orders') void ensureOrdersLoaded();
-    if (tab === 'deliveries') void ensureDeliveriesLoaded();
-    if (tab === 'reports') void ensureReportsLoaded();
   }, [
-    ensureDeliveriesLoaded,
     ensureOrdersLoaded,
     ensureProductsLoaded,
-    ensurePurchaseLoaded,
-    ensureReportsLoaded
+    ensurePurchaseLoaded
   ]);
-
-  // Export JSON file download
-  const handleDownloadBackup = async () => {
-    try {
-      const backupData = await exportBackup();
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
-      const downloadAnchor = document.createElement('a');
-      downloadAnchor.setAttribute("href", dataStr);
-      downloadAnchor.setAttribute("download", `buddy_erp_backup_${new Date().toISOString().split('T')[0]}.json`);
-      document.body.appendChild(downloadAnchor);
-      downloadAnchor.click();
-      downloadAnchor.remove();
-      alert('ส่งออกไฟล์สํารองข้อมูล JSON เรียบร้อย!');
-    } catch (err: any) {
-      alert(`ส่งออกไฟล์สำรองไม่สำเร็จ: ${err.message || err}`);
-    }
-  };
-
-  const handleImportBackup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!backupInput.trim()) return;
-    const res = await importBackup(backupInput);
-    if (res.success) {
-      alert('นำเข้าสำรองข้อมูลสำเร็จ คลังได้รับการกู้คืนเรียบร้อย!');
-      setBackupInput('');
-      openTab('dashboard');
-    } else {
-      alert(`นำเข้าล้มเหลว: ${res.error}`);
-    }
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fileReader = new FileReader();
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    fileReader.onload = async (event) => {
-      const text = event.target?.result as string;
-      if (text) {
-        const res = await importBackup(text);
-        if (res.success) {
-          alert('นำเข้าไฟล์สำรองข้อมูล JSON สำเร็จ คลังพร้อมขายทันที!');
-          openTab('dashboard');
-        } else {
-          alert(`ไฟล์สำรองข้อมูลไม่ถูกต้อง: ${res.error}`);
-        }
-      }
-    };
-    fileReader.readAsText(file);
-  };
 
   if ((loading || loadingDashboard) && !dashboardSummary) {
     return (
@@ -187,12 +108,9 @@ export default function App() {
   // Tab configurations
   const menuItems = [
     { id: 'dashboard', label: 'แดชบอร์ด', icon: BarChart2 },
-    { id: 'products', label: 'รายละเอียดสินค้า', icon: Package },
-    { id: 'purchase', label: 'รับเข้าคลัง (WAC)', icon: PlusSquare },
-    { id: 'orders', label: 'บิลสั่งเสนอขาย', icon: ShoppingBag },
-    { id: 'deliveries', label: 'จัดส่ง / นัดรับ', icon: Truck },
-    { id: 'reports', label: 'รายงานกำไรและงบ', icon: BarChart2 },
-    { id: 'backup', label: 'ตั้งค่า / สำรองข้อมูล', icon: Settings },
+    { id: 'products', label: 'สินค้า', icon: Package },
+    { id: 'purchase', label: 'รับเข้า', icon: PlusSquare },
+    { id: 'orders', label: 'ออเดอร์', icon: ShoppingBag },
   ] as const;
 
   const renderActiveView = () => {
@@ -216,11 +134,10 @@ export default function App() {
             addModel={addModel}
             updateModel={updateModel}
             archiveModel={archiveModel}
-            uploadModelImage={uploadModelImage}
+            uploadVariantImage={uploadVariantImage}
             addVariant={addVariant}
             updateVariant={updateVariant}
             archiveVariant={archiveVariant}
-            requireDeleteAuth={requireDeleteAuth}
           />
         );
       case 'purchase':
@@ -236,93 +153,8 @@ export default function App() {
             createOrder={createOrder}
             updateOrderStatus={updateOrderStatus}
             deleteOrder={deleteOrder}
-            requireDeleteAuth={requireDeleteAuth}
+            updateDelivery={updateDelivery}
           />
-        );
-      case 'deliveries':
-        if (loadingSlices.deliveries && !loadedSlices.deliveries) return sliceLoading('กำลังโหลดข้อมูลจัดส่ง...');
-        return <DeliveriesView data={data} updateDelivery={updateDelivery} />;
-      case 'reports':
-        if (loadingSlices.reports && !loadedSlices.reports) return sliceLoading('กำลังโหลดข้อมูลรายงาน...');
-        return <ReportsView data={data} />;
-      case 'backup':
-        return (
-          <div className="space-y-6" id="settings-view">
-            <div className="py-2 border-b border-slate-100">
-              <h1 className="text-2xl font-bold text-slate-800 tracking-tight">ตั้งค่าและสำรองระบบ (Backup)</h1>
-              <p className="text-slate-500 text-sm">การจัดลำดับข้อมูลหลัก จัดการสำรองข้อมูลคลังเพื่อความมั่นคงและปลอดภัย</p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
-              {/* Export Panel */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-                <h3 className="font-bold text-slate-700 text-sm flex items-center gap-1.5 border-b border-slate-50 pb-2">
-                  <FileDown className="w-4.5 h-4.5 text-emerald-700" />
-                  ส่งออกข้อมูลสํารอง (Export Data)
-                </h3>
-                <p className="text-slate-500 text-xs leading-relaxed">
-                  ดาวน์โหลดข้อมูลและข้อมูลหลักของร้านค้าปัจจุบัน (แบรนด์, ล็อตนำเข้า, รายลูกค้า, และออเดอร์ทั้งหมด) เก็บไว้เป็นไฟล์ .json มีฟังก์ชันย้ายระบบ ย้ายโน้ตบุ๊ก ปล่อยเครื่องได้ปลอดภัย
-                </p>
-                <div className="pt-2">
-                  <button
-                    onClick={handleDownloadBackup}
-                    className="w-full sm:w-auto bg-emerald-700 hover:bg-emerald-800 text-white font-semibold py-2.5 px-5 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <FileDown className="w-4 h-4" /> ส่งออกเป็นไฟล์สํารอง JSON
-                  </button>
-                </div>
-              </div>
-
-              {/* Import Panel */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-                <h3 className="font-bold text-slate-700 text-sm flex items-center gap-1.5 border-b border-slate-50 pb-2">
-                  <FileUp className="w-4.5 h-4.5 text-emerald-500" />
-                  นำเข้ากู้คืนข้อมูล (Import Data)
-                </h3>
-                <p className="text-slate-500 text-xs">
-                  เลือกไฟล์สำรองนามสกุล .json ของแผงควบคุมนี้ เพื่อดึงข้อมูลกลับมาอย่างรวดเร็ว
-                </p>
-                
-                {/* Upload Trigger button */}
-                <div className="p-3.5 bg-slate-55 border border-dashed border-slate-200 rounded-xl bg-slate-50 flex flex-col items-center justify-center text-center">
-                  <input
-                    type="file"
-                    accept=".json"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    id="import-file-upload"
-                  />
-                  <label
-                    htmlFor="import-file-upload"
-                    className="text-xs bg-slate-900 hover:bg-slate-800 text-white font-bold py-1.5 px-3.5 rounded-lg cursor-pointer transition-colors"
-                  >
-                    เลือกไฟล์สำรองของคลัง
-                  </label>
-                  <span className="text-[10px] text-slate-400 mt-1.5 block">เฉพาะไฟล์ .json เท่านั้น</span>
-                </div>
-
-                {/* Textarea Import Option */}
-                <form onSubmit={handleImportBackup} className="space-y-3 pt-1">
-                  <label className="block text-[10px] font-semibold text-slate-400 uppercase">หรือป้อน JSON สตริงข้อความกู้คืน</label>
-                  <textarea
-                    rows={2}
-                    value={backupInput}
-                    onChange={(e) => setBackupInput(e.target.value)}
-                    placeholder="วางโค้ด JSON กู้คืนที่นี่..."
-                    className="w-full text-[10px] p-2 bg-slate-50 font-mono border border-slate-200 rounded-lg outline-hidden focus:bg-white"
-                  ></textarea>
-                  <button
-                    type="submit"
-                    className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 px-4 rounded-xl text-xs transition-colors cursor-pointer"
-                  >
-                    กู้คืนข้อมูลจากโค้ด
-                  </button>
-                </form>
-              </div>
-
-            </div>
-          </div>
         );
       default:
         return null;
@@ -485,7 +317,7 @@ export default function App() {
 
       {/* ⚠️ MOBILE BOTTOM NAVIGATION BAR (UX PRIORITY) */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 md:hidden flex justify-around items-center py-2.5 px-2 z-35 shadow-lg" id="mobile-bottom-nav">
-        {menuItems.slice(0, 5).map(item => {
+        {menuItems.map(item => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
           return (
@@ -501,22 +333,7 @@ export default function App() {
             </button>
           );
         })}
-        {/* Plus quick backoffice anchor toggle or report */}
-        <button
-          onClick={() => openTab('reports')}
-          className={`flex flex-col items-center gap-1 cursor-pointer transition-colors ${
-            activeTab === 'reports' ? 'text-emerald-700' : 'text-slate-400 hover:text-slate-600'
-          }`}
-        >
-          <BarChart2 className="w-4.5 h-4.5 shrink-0" />
-          <span className="text-[9px] font-medium leading-none">รายงาน</span>
-        </button>
       </nav>
-
-      <DeleteAuthDialog
-        request={deleteAuthRequest}
-        onClose={() => setDeleteAuthRequest(null)}
-      />
 
     </div>
   );

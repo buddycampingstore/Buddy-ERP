@@ -4,28 +4,29 @@
  */
 
 import React, { useState } from 'react';
-import { 
-  AppData, 
-  Customer, 
-  OrderChannel, 
-  OrderStatus, 
-  DeliveryType 
+import {
+  AppData,
+  Customer,
+  OrderChannel,
+  OrderStatus,
+  Delivery,
+  DeliveryStatus,
+  DeliveryType
 } from '../types';
-import { DeleteAuthRequest } from './DeleteAuthDialog';
 import { getOrderProfit, getOrderRevenue, getOrderSubtotal, getVariantStockQty } from '../lib/finance';
-import { 
-  Plus, 
-  Trash2, 
+import {
+  Plus,
+  Trash2,
   Percent,
-  Clock, 
-  CheckCircle, 
-  Truck, 
-  Check, 
-  UserPlus, 
-  TrendingUp, 
-  Search, 
-  Calendar, 
-  ShoppingBag, 
+  Clock,
+  CheckCircle,
+  Truck,
+  Check,
+  UserPlus,
+  TrendingUp,
+  Search,
+  Calendar,
+  ShoppingBag,
   Users,
   Image as ImageIcon
 } from 'lucide-react';
@@ -48,7 +49,7 @@ interface OrdersViewProps {
   }) => Promise<string>;
   updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
   deleteOrder: (orderId: string) => Promise<void>;
-  requireDeleteAuth: (request: DeleteAuthRequest) => void;
+  updateDelivery: (orderId: string, updates: Partial<Delivery>) => Promise<void>;
 }
 
 interface NewOrderItem {
@@ -65,7 +66,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   createOrder,
   updateOrderStatus,
   deleteOrder,
-  requireDeleteAuth
+  updateDelivery
 }) => {
   void updateCustomer;
 
@@ -83,6 +84,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const [isAdding, setIsAdding] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [editingDeliveryOrderId, setEditingDeliveryOrderId] = useState<string | null>(null);
+  const [trackingNo, setTrackingNo] = useState('');
+  const [pickupDate, setPickupDate] = useState('');
+  const [deliveryStatus, setDeliveryStatus] = useState<DeliveryStatus>('pending');
 
   // --- IMAGE LIGHTBOX STATE ---
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -112,6 +117,28 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   ]);
 
   const numberInputValue = (value: number) => value === 0 ? '' : value;
+
+  const startEditDelivery = (orderId: string) => {
+    const delivery = data.deliveries.find(item => item.order_id === orderId);
+    setEditingDeliveryOrderId(orderId);
+    setTrackingNo(delivery?.tracking || '');
+    setPickupDate(delivery?.pickup_datetime || '');
+    setDeliveryStatus(delivery?.status || 'pending');
+  };
+
+  const handleSaveDeliveryInfo = async (orderId: string) => {
+    try {
+      await updateDelivery(orderId, {
+        tracking: trackingNo,
+        pickup_datetime: pickupDate,
+        status: deliveryStatus
+      });
+      setEditingDeliveryOrderId(null);
+      alert('อัปเดตข้อมูลจัดส่งเรียบร้อยแล้ว');
+    } catch (err: any) {
+      alert(`อัปเดตข้อมูลจัดส่งไม่สำเร็จ: ${err.message || err}`);
+    }
+  };
 
   // Set first variant as default on open
   React.useEffect(() => {
@@ -251,10 +278,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     // 2. Filter by search query
     if (searchQuery.trim() !== '') {
       const searchLow = searchQuery.toLowerCase();
-      
+
       const matchId = order.id.toLowerCase().includes(searchLow);
       const matchCustomer = (order.customer_name_snapshot || '').toLowerCase().includes(searchLow);
-      
+
       const matchItems = order.items.some(oi => {
         const v = data.variants.find(varItem => varItem.id === oi.variant_id);
         const m = v ? data.models.find(mod => mod.id === v.model_id) : null;
@@ -327,7 +354,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         // ================== STATE: NEW SALES ORDER FORM ==================
         <form onSubmit={handleSaveOrder} className="space-y-6 animate-fade-in" id="new-order-form">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
+
             {/* Left Column: Meta info */}
             <div className="bg-white p-5 rounded-2xl border border-slate-150 shadow-xs space-y-4 lg:col-span-1">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100">
@@ -522,7 +549,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
             {/* Right Column: Order Lines and Real-time Profit Preview */}
             <div className="lg:col-span-2 space-y-6">
-              
+
               {/* Items Card list */}
               <div className="bg-white p-5 rounded-2xl border border-slate-150 shadow-xs space-y-4">
                 <div className="flex justify-between items-center pb-2 border-b border-slate-100">
@@ -553,6 +580,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                     const activeBrandId = currentBrand?.id || '';
                     const activeModelId = currentModel?.id || '';
                     const activeVariantId = item.variant_id || '';
+                    const currentImage = variant?.image || currentModel?.image || '';
 
                     // Filter cascading levels
                     const modelsForBrand = activeModels.filter(m => m.brand_id === activeBrandId);
@@ -582,14 +610,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                         <div className="flex flex-col md:flex-row md:items-end gap-3.5">
                           {/* Image Thumbnail Selection Preview */}
                           <div className="shrink-0 flex items-center justify-center" id={`order-row-image-container-${idx}`}>
-                            {currentModel?.image ? (
-                              <img 
-                                src={currentModel.image} 
-                                className="w-14 h-14 md:w-16 md:h-16 rounded-xl object-cover border border-slate-200 cursor-zoom-in hover:scale-105 active:scale-95 transition-all duration-150 shadow-xs" 
+                            {currentImage ? (
+                              <img
+                                src={currentImage}
+                                className="w-14 h-14 md:w-16 md:h-16 rounded-xl object-cover border border-slate-200 cursor-zoom-in hover:scale-105 active:scale-95 transition-all duration-150 shadow-xs"
                                 referrerPolicy="no-referrer"
                                 title="คลิกเพื่อขยายดูรูปภาพ"
                                 onClick={() => {
-                                  setPreviewImage(currentModel.image || null);
+                                  setPreviewImage(currentImage);
                                   setPreviewTitle(`${currentBrand?.name || 'เก้าอี้'} ${currentModel.name}`);
                                 }}
                               />
@@ -602,7 +630,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                           </div>
 
                           <div className="grow w-full flex flex-col gap-3 md:grid md:grid-cols-12 md:gap-3 md:items-end">
-                            
+
                             {/* Sequential Choose variation cascading options */}
                             <div className="md:col-span-6 grid grid-cols-1 md:grid-cols-3 gap-2">
                               <div>
@@ -619,7 +647,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                                   ))}
                                 </select>
                               </div>
-                              
+
                               <div>
                                 <label className="block text-xs md:text-[10px] font-semibold text-slate-400 mb-1 uppercase truncate">รุ่น (Model)</label>
                                 <select
@@ -842,23 +870,22 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                 const orderSubTotal = getOrderSubtotal(order);
                 const orderNetAmount = getOrderRevenue(order);
                 const totalBatchProfit = getOrderProfit(order);
+                const delivery = data.deliveries.find(item => item.order_id === order.id);
+                const isEditingDelivery = editingDeliveryOrderId === order.id;
 
                 return (
-                  <div 
-                    key={order.id} 
+                  <div
+                    key={order.id}
                     className="bg-white border border-slate-150/40 rounded-2xl p-5 shadow-xs flex flex-col md:flex-row justify-between gap-4 relative group"
                   >
                     {/* Trash float delete inside and release stock */}
                     <button
                       onClick={() => {
-                        requireDeleteAuth({
-                          title: `ลบออเดอร์ ${order.id.slice(0, 8)}`,
-                          message: `การลบออเดอร์นี้จะปล่อยสต็อกเก้าอี้กางจำนวน ${order.items.length} ตัวคืนสู่คลังทันที กรุณากรอกรหัสผ่าน Supabase เพื่อยืนยัน`,
-                          onConfirm: async () => {
-                            await deleteOrder(order.id);
-                            alert('ลบออเดอร์และคืนสต็อกเรียบร้อยแล้ว');
-                          }
-                        });
+                        const ok = window.confirm(`ลบออเดอร์ ${order.id.slice(0, 8)} และคืนสต็อก ${order.items.length} ตัวเข้าคลังหรือไม่?`);
+                        if (!ok) return;
+                        deleteOrder(order.id)
+                          .then(() => alert('ลบออเดอร์และคืนสต็อกเรียบร้อยแล้ว'))
+                          .catch((err: any) => alert(`ลบออเดอร์ไม่สำเร็จ: ${err.message || err}`));
                       }}
                       className="absolute right-4 top-4 p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
                       title="ลบออเดอร์และคืนสต็อกของ"
@@ -904,17 +931,18 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                           const displayModelName = model?.name || oi.model_name_snapshot || 'สินค้าเดิม';
                           const displayVariantColor = variant?.color || oi.variant_color_snapshot || '-';
                           const displayBrandName = brand?.name || oi.brand_name_snapshot || 'เก้าอี้';
+                          const itemImage = variant?.image || model?.image || '';
                           return (
                             <div key={idx} className="flex items-center justify-between gap-3 text-slate-700 border-b border-slate-100 last:border-b-0 py-1.5 first:pt-0 last:pb-0">
                               <div className="flex items-center gap-2 min-w-0">
-                                {model?.image ? (
-                                  <img 
-                                    src={model.image} 
-                                    className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0 cursor-zoom-in active:scale-95 transition-transform" 
+                                {itemImage ? (
+                                  <img
+                                    src={itemImage}
+                                    className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0 cursor-zoom-in active:scale-95 transition-transform"
                                     referrerPolicy="no-referrer"
                                     title="คลิกเพื่อขยายดูรูปภาพ"
                                     onClick={() => {
-                                      setPreviewImage(model.image || null);
+                                      setPreviewImage(itemImage);
                                       setPreviewTitle(`${displayBrandName} ${displayModelName}`);
                                     }}
                                   />
@@ -946,6 +974,83 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                             {order.shipping_cost !== undefined && order.shipping_cost > 0 && (
                               <div className="text-rose-600">ต้นทุนค่าจัดส่งจริง: -฿{order.shipping_cost.toLocaleString()}</div>
                             )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="bg-white border border-slate-100 rounded-xl p-3 text-[11px] space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-600 flex items-center gap-1">
+                            <Truck className="w-3.5 h-3.5 text-emerald-700" />
+                            {order.delivery_type === 'shipping' ? 'ข้อมูลจัดส่ง' : 'ข้อมูลนัดรับ'}
+                          </span>
+                          {!isEditingDelivery && (
+                            <button
+                              type="button"
+                              onClick={() => startEditDelivery(order.id)}
+                              className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800"
+                            >
+                              แก้ไข
+                            </button>
+                          )}
+                        </div>
+
+                        {isEditingDelivery ? (
+                          <div className="space-y-2">
+                            {order.delivery_type === 'shipping' ? (
+                              <input
+                                type="text"
+                                value={trackingNo}
+                                onChange={(event) => setTrackingNo(event.target.value)}
+                                placeholder="เลขพัสดุ"
+                                className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg outline-hidden"
+                              />
+                            ) : (
+                              <input
+                                type="datetime-local"
+                                value={pickupDate}
+                                onChange={(event) => setPickupDate(event.target.value)}
+                                className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg outline-hidden"
+                              />
+                            )}
+                            <select
+                              value={deliveryStatus}
+                              onChange={(event) => setDeliveryStatus(event.target.value as DeliveryStatus)}
+                              className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg outline-hidden"
+                            >
+                              <option value="pending">รอดำเนินการ</option>
+                              <option value="dispatched">ส่งแล้ว / นัดแล้ว</option>
+                              <option value="delivered">สำเร็จ</option>
+                            </select>
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setEditingDeliveryOrderId(null)}
+                                className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 font-semibold"
+                              >
+                                ยกเลิก
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSaveDeliveryInfo(order.id)}
+                                className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white font-bold"
+                              >
+                                บันทึก
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-slate-500 space-y-1">
+                            {order.delivery_type === 'shipping' ? (
+                              <div>เลขพัสดุ: <strong className="text-slate-700">{delivery?.tracking || '-'}</strong></div>
+                            ) : (
+                              <div>เวลานัดรับ: <strong className="text-slate-700">{delivery?.pickup_datetime || '-'}</strong></div>
+                            )}
+                            <div>
+                              สถานะจัดส่ง: <strong className="text-slate-700">
+                                {delivery?.status === 'delivered' ? 'สำเร็จ' : delivery?.status === 'dispatched' ? 'ส่งแล้ว / นัดแล้ว' : 'รอดำเนินการ'}
+                              </strong>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1021,7 +1126,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
       {/* --- IMAGE LIGHTBOX MODAL --- */}
       {previewImage && (
-        <div 
+        <div
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center p-4 z-50 animate-fade-in"
           id="order-image-lightbox-modal"
           onClick={() => setPreviewImage(null)}
@@ -1041,12 +1146,12 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
           </div>
 
           {/* Interactive Zoomable Image container */}
-          <div 
+          <div
             className="relative w-full max-w-2xl max-h-[75vh] flex items-center justify-center bg-slate-900/50 rounded-2xl overflow-hidden border border-white/10 shadow-2xl animate-slide-up"
             onClick={(e) => e.stopPropagation()}
           >
-            <img 
-              src={previewImage} 
+            <img
+              src={previewImage}
               alt={previewTitle}
               className="max-w-full max-h-[75vh] object-contain rounded-2xl select-none"
               referrerPolicy="no-referrer"

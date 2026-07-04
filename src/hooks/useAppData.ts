@@ -112,6 +112,7 @@ const mapVariant = (variant: any): Variant => ({
   id: variant.id,
   model_id: variant.model_id,
   color: variant.color,
+  image: variant.image || undefined,
   qty_in_stock: Number(variant.qty_in_stock || 0),
   current_wac: Number(variant.current_wac || 0),
   standard_sale_price: Number(variant.standard_sale_price || 0),
@@ -685,12 +686,12 @@ export function useAppData() {
     );
   };
 
-  const uploadModelImage = async (file: File) => {
+  const uploadVariantImage = async (file: File) => {
     const extension = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
     const imageId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const path = `models/${imageId}.${extension}`;
+    const path = `variants/${imageId}.${extension}`;
 
     const { error: uploadError } = await supabase.storage
       .from('product-images')
@@ -707,13 +708,14 @@ export function useAppData() {
     return publicUrlData.publicUrl;
   };
 
-  const addVariant = async (model_id: string, color: string, standard_sale_price?: number) => {
+  const addVariant = async (model_id: string, color: string, standard_sale_price?: number, image?: string) => {
     const { data: created, error: insertError } = await supabase
       .from('variants')
       .insert({
         model_id,
         color: color.trim(),
-        standard_sale_price: standard_sale_price || 0
+        standard_sale_price: standard_sale_price || 0,
+        image: image || null
       })
       .select()
       .single();
@@ -732,14 +734,15 @@ export function useAppData() {
     return nextVariant;
   };
 
-  const updateVariant = async (id: string, color: string, model_id: string, standard_sale_price?: number) => {
+  const updateVariant = async (id: string, color: string, model_id: string, standard_sale_price?: number, image?: string) => {
     await refreshAfter(
       supabase
         .from('variants')
         .update({
           color: color.trim(),
           model_id,
-          standard_sale_price: standard_sale_price || 0
+          standard_sale_price: standard_sale_price || 0,
+          image: image || null
         })
         .eq('id', id)
         .then(({ error }) => assertNoError(error)),
@@ -963,7 +966,7 @@ export function useAppData() {
     addModel,
     updateModel,
     archiveModel,
-    uploadModelImage,
+    uploadVariantImage,
     addVariant,
     updateVariant,
     archiveVariant,

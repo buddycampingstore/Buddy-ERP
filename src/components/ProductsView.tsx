@@ -10,7 +10,6 @@ import {
   Model, 
   Variant 
 } from '../types';
-import { DeleteAuthRequest } from './DeleteAuthDialog';
 import { getVariantStockQty } from '../lib/finance';
 import { 
   Plus, 
@@ -34,11 +33,10 @@ interface ProductsViewProps {
   addModel: (brand_id: string, name: string, image?: string) => Promise<Model>;
   updateModel: (id: string, name: string, brand_id: string, image?: string) => Promise<void>;
   archiveModel: (id: string) => Promise<void>;
-  uploadModelImage: (file: File) => Promise<string>;
-  addVariant: (model_id: string, color: string, standard_sale_price?: number) => Promise<Variant>;
-  updateVariant: (id: string, color: string, model_id: string, standard_sale_price?: number) => Promise<void>;
+  uploadVariantImage: (file: File) => Promise<string>;
+  addVariant: (model_id: string, color: string, standard_sale_price?: number, image?: string) => Promise<Variant>;
+  updateVariant: (id: string, color: string, model_id: string, standard_sale_price?: number, image?: string) => Promise<void>;
   archiveVariant: (id: string) => Promise<void>;
-  requireDeleteAuth: (request: DeleteAuthRequest) => void;
 }
 
 export const ProductsView: React.FC<ProductsViewProps> = ({
@@ -49,11 +47,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   addModel,
   updateModel,
   archiveModel,
-  uploadModelImage,
+  uploadVariantImage,
   addVariant,
   updateVariant,
-  archiveVariant,
-  requireDeleteAuth
+  archiveVariant
 }) => {
   const [subTab, setSubTab] = useState<'variants' | 'brands_models'>('variants');
   const [searchQuery, setSearchQuery] = useState('');
@@ -81,6 +78,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   const [variantColor, setVariantColor] = useState('');
   const [variantModelId, setVariantModelId] = useState('');
   const [variantStandardSalePrice, setVariantStandardSalePrice] = useState<string>('');
+  const [variantImage, setVariantImage] = useState('');
   const [savingForm, setSavingForm] = useState<'brand' | 'model' | 'variant' | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
 
@@ -134,13 +132,14 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     setSavingForm('variant');
     try {
       if (variantEditId) {
-        await updateVariant(variantEditId, variantColor, variantModelId, priceNum);
+        await updateVariant(variantEditId, variantColor, variantModelId, priceNum, variantImage);
       } else {
-        await addVariant(variantModelId, variantColor, priceNum);
+        await addVariant(variantModelId, variantColor, priceNum, variantImage);
       }
       setVariantColor('');
       setVariantModelId('');
       setVariantStandardSalePrice('');
+      setVariantImage('');
       setVariantEditId(null);
       setShowVariantForm(false);
     } catch (err: any) {
@@ -150,50 +149,37 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     }
   };
 
-  // --- DELETE CONFIRMATION WITH SUPABASE RE-AUTH ---
   const handleConfirmDeleteBrand = (id: string, name: string) => {
     const isUsed = data.models.some(m => m.brand_id === id);
     const msg = isUsed 
-      ? `แบรนด์ "${name}" มีรุ่นสินค้าผูกใช้อยู่ หากลบจะลบรุ่น สี และข้อมูลที่เกี่ยวข้องทั้งหมด กรุณากรอกรหัสผ่าน Supabase เพื่อยืนยัน`
-      : `ต้องการลบแบรนด์ "${name}" กรุณากรอกรหัสผ่าน Supabase เพื่อยืนยัน`;
-    requireDeleteAuth({
-      title: `ลบแบรนด์ "${name}"`,
-      message: msg,
-      onConfirm: async () => {
-        await archiveBrand(id);
-        alert('ลบแบรนด์เรียบร้อยแล้ว');
-      }
-    });
+      ? `แบรนด์ "${name}" มีรุ่นและสีผูกอยู่ ต้องการซ่อนแบรนด์นี้หรือไม่?`
+      : `ต้องการซ่อนแบรนด์ "${name}" หรือไม่?`;
+    if (!window.confirm(msg)) return;
+    archiveBrand(id)
+      .then(() => alert('ซ่อนแบรนด์เรียบร้อยแล้ว'))
+      .catch((err: any) => alert(`ซ่อนแบรนด์ไม่สำเร็จ: ${err.message || err}`));
   };
 
   const handleConfirmDeleteModel = (id: string, name: string) => {
     const isUsed = data.variants.some(v => v.model_id === id);
     const msg = isUsed 
-      ? `รุ่นสินค้า "${name}" มีตัวเลือกสีและคลังสต็อกผูกอยู่ หากลบระบบจะล้างสีและสต็อกทั้งหมด กรุณากรอกรหัสผ่าน Supabase เพื่อยืนยัน`
-      : `ต้องการลบรุ่นสินค้า "${name}" กรุณากรอกรหัสผ่าน Supabase เพื่อยืนยัน`;
-    requireDeleteAuth({
-      title: `ลบรุ่นสินค้า "${name}"`,
-      message: msg,
-      onConfirm: async () => {
-        await archiveModel(id);
-        alert('ลบรุ่นสินค้าเรียบร้อยแล้ว');
-      }
-    });
+      ? `รุ่น "${name}" มีสีผูกอยู่ ต้องการซ่อนรุ่นและสีทั้งหมดหรือไม่?`
+      : `ต้องการซ่อนรุ่น "${name}" หรือไม่?`;
+    if (!window.confirm(msg)) return;
+    archiveModel(id)
+      .then(() => alert('ซ่อนรุ่นสินค้าเรียบร้อยแล้ว'))
+      .catch((err: any) => alert(`ซ่อนรุ่นสินค้าไม่สำเร็จ: ${err.message || err}`));
   };
 
   const handleConfirmDeleteVariant = (id: string, color: string, name: string) => {
     const count = getVariantStockQty(data.stockSummary, id);
     const msg = count > 0 
-      ? `ตัวเลือกสี "${color}" นี้มีสินค้าค้างอยู่ในสต็อกจริง ${count} ตัว หากลบตัวเลือกนี้ ข้อมูลสต็อกทั้งหมดของตัวเดิมจะถูกล้าง กรุณากรอกรหัสผ่าน Supabase เพื่อยืนยัน`
-      : `ต้องการลบตัวเลือกสี "${color}" ของรุ่น "${name}" กรุณากรอกรหัสผ่าน Supabase เพื่อยืนยัน`;
-    requireDeleteAuth({
-      title: `ลบตัวเลือกสี "${color}"`,
-      message: msg,
-      onConfirm: async () => {
-        await archiveVariant(id);
-        alert('ลบตัวเลือกสินค้าเรียบร้อยแล้ว');
-      }
-    });
+      ? `สี "${color}" ของ ${name} ยังมีสต็อก ${count} ตัว ต้องการซ่อนสีนี้หรือไม่?`
+      : `ต้องการซ่อนสี "${color}" ของ ${name} หรือไม่?`;
+    if (!window.confirm(msg)) return;
+    archiveVariant(id)
+      .then(() => alert('ซ่อนสีสินค้าเรียบร้อยแล้ว'))
+      .catch((err: any) => alert(`ซ่อนสีสินค้าไม่สำเร็จ: ${err.message || err}`));
   };
 
   const activeBrands = data.brands.filter((brand) => brand.is_active !== false);
@@ -266,7 +252,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           modelName: v.modelName,
           brandName: v.brandName,
           brandId: modelObj?.brand_id || '',
-          modelImage: modelObj?.image,
+          modelImage: v.image || modelObj?.image,
           variants: []
         };
         groups.push(existingGroup);
@@ -348,49 +334,48 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           </h1>
           <p className="text-slate-500 text-sm">กำหนดรายละเอียดแบรนด์ รุ่น สี ขนาด และดูมูลค่าเสื่อมถอยคลัง WAC</p>
         </div>
-        <div className="mt-2 md:mt-0 flex gap-2">
-          {subTab === 'variants' && (
-            <button
-              onClick={() => {
-                setVariantEditId(null);
-                setVariantColor('');
-                setVariantStandardSalePrice('');
-                if (activeModels.length > 0) setVariantModelId(activeModels[0].id);
-                setShowVariantForm(true);
-              }}
-              className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold py-2 px-3 rounded-xl flex items-center gap-1 shadow-sm transition-colors cursor-pointer"
-              id="add-variant-btn"
-            >
-              <Plus className="w-4 h-4" /> เพิ่มสินค้าโมเดล/สีใหม่
-            </button>
-          )}
+        <div className="mt-2 md:mt-0 flex flex-wrap gap-2">
+          <button
+            onClick={() => {
+              setBrandEditId(null);
+              setBrandName('');
+              setShowBrandForm(true);
+            }}
+            className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold py-2 px-3 rounded-xl flex items-center gap-1 transition-colors cursor-pointer"
+          >
+            <Plus className="w-4 h-4" /> แบรนด์
+          </button>
+          <button
+            onClick={() => {
+              if (activeBrands.length === 0) {
+                alert('เพิ่มแบรนด์ก่อนอย่างน้อย 1 แบรนด์');
+                return;
+              }
+              setModelEditId(null);
+              setModelName('');
+              setModelBrandId(activeBrands[0].id);
+              setModelImage('');
+              setShowModelForm(true);
+            }}
+            className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold py-2 px-3 rounded-xl flex items-center gap-1 transition-colors cursor-pointer"
+          >
+            <Plus className="w-4 h-4" /> รุ่น
+          </button>
+          <button
+            onClick={() => {
+              setVariantEditId(null);
+              setVariantColor('');
+              setVariantStandardSalePrice('');
+              setVariantImage('');
+              if (activeModels.length > 0) setVariantModelId(activeModels[0].id);
+              setShowVariantForm(true);
+            }}
+            className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold py-2 px-3 rounded-xl flex items-center gap-1 shadow-sm transition-colors cursor-pointer"
+            id="add-variant-btn"
+          >
+            <Plus className="w-4 h-4" /> เพิ่มสินค้า/สี
+          </button>
         </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex border-b border-slate-200 gap-6" id="subtabs">
-        <button
-          onClick={() => setSubTab('variants')}
-          className={`pb-3 text-sm font-semibold border-b-2 px-1 transition-colors flex items-center gap-2 cursor-pointer ${
-            subTab === 'variants'
-              ? 'border-emerald-700 text-emerald-800 font-bold'
-              : 'border-transparent text-slate-400 hover:text-slate-600'
-          }`}
-          id="tab-variants"
-        >
-          <Package className="w-4 h-4" /> ข้อมูลสินค้า และสต็อกเฉลี่ย (WAC)
-        </button>
-        <button
-          onClick={() => setSubTab('brands_models')}
-          className={`pb-3 text-sm font-semibold border-b-2 px-1 transition-colors flex items-center gap-2 cursor-pointer ${
-            subTab === 'brands_models'
-              ? 'border-emerald-700 text-emerald-800 font-bold'
-              : 'border-transparent text-slate-400 hover:text-slate-600'
-          }`}
-          id="tab-brands-models"
-        >
-          <BookOpen className="w-4 h-4" /> แบรนด์ และ รุ่นสินค้า
-        </button>
       </div>
 
       {subTab === 'variants' ? (
@@ -455,9 +440,35 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                         แบรนด์ {brandGroup.brandName}
                       </h2>
                     </div>
-                    <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100/40">
-                      {brandGroup.models.length} รุ่นย่อย
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100/40">
+                        {brandGroup.models.length} รุ่นย่อย
+                      </span>
+                      {brandGroup.brandId !== 'none' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const brand = activeBrands.find(item => item.id === brandGroup.brandId);
+                              if (!brand) return;
+                              setBrandEditId(brand.id);
+                              setBrandName(brand.name);
+                              setShowBrandForm(true);
+                            }}
+                            className="text-[10px] font-bold text-slate-500 hover:text-emerald-700 bg-white border border-slate-200 rounded-lg px-2 py-1"
+                          >
+                            แก้แบรนด์
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleConfirmDeleteBrand(brandGroup.brandId, brandGroup.brandName)}
+                            className="text-[10px] font-bold text-rose-500 hover:text-rose-700 bg-white border border-rose-100 rounded-lg px-2 py-1"
+                          >
+                            ซ่อน
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   {/* Models belonging to this brand */}
@@ -473,7 +484,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                           id={`model-group-${group.modelId}`}
                         >
                           {/* Header: Model title & compact stats */}
-                          <div className="bg-slate-50/70 p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                            <div className="bg-slate-50/70 p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                             <div className="flex items-center gap-3">
                               {group.modelImage ? (
                                 <img 
@@ -508,18 +519,42 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                             </div>
 
                             {/* Right: Aggregated numbers (Clean Grid) */}
-                            <div className="grid grid-cols-2 gap-4 text-xs font-semibold border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 md:pl-6 min-w-[200px]">
-                              <div>
-                                <span className="text-slate-400 block text-[9px] uppercase font-bold">สต็อกรวมทุกสี</span>
-                                <span className={`font-extrabold text-slate-800 text-sm ${totalQty === 0 ? 'text-rose-500' : 'text-slate-800'}`}>
-                                  {totalQty} <span className="text-[10px] text-slate-400 font-normal">ตัว</span>
-                                </span>
+                            <div className="flex flex-col md:flex-row md:items-center gap-3 border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 md:pl-6">
+                              <div className="grid grid-cols-2 gap-4 text-xs font-semibold min-w-[200px]">
+                                <div>
+                                  <span className="text-slate-400 block text-[9px] uppercase font-bold">สต็อกรวมทุกสี</span>
+                                  <span className={`font-extrabold text-slate-800 text-sm ${totalQty === 0 ? 'text-rose-500' : 'text-slate-800'}`}>
+                                    {totalQty} <span className="text-[10px] text-slate-400 font-normal">ตัว</span>
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-emerald-800 block text-[9px] uppercase font-bold">มูลค่ารวมคลังรุ่นนี้</span>
+                                  <span className="font-extrabold text-emerald-700 text-sm font-mono">
+                                    ฿{totalWacValue.toLocaleString('th-TH', { maximumFractionDigits: 0 })}
+                                  </span>
+                                </div>
                               </div>
-                              <div>
-                                <span className="text-emerald-800 block text-[9px] uppercase font-bold">มูลค่ารวมคลังรุ่นนี้</span>
-                                <span className="font-extrabold text-emerald-700 text-sm font-mono">
-                                  ฿{totalWacValue.toLocaleString('th-TH', { maximumFractionDigits: 0 })}
-                                </span>
+                              <div className="flex gap-1.5 justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setModelEditId(group.modelId);
+                                    setModelName(group.modelName);
+                                    setModelBrandId(group.brandId);
+                                    setModelImage(group.modelImage || '');
+                                    setShowModelForm(true);
+                                  }}
+                                  className="text-[10px] font-bold text-slate-500 hover:text-emerald-700 bg-white border border-slate-200 rounded-lg px-2 py-1"
+                                >
+                                  แก้รุ่น
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleConfirmDeleteModel(group.modelId, group.modelName)}
+                                  className="text-[10px] font-bold text-rose-500 hover:text-rose-700 bg-white border border-rose-100 rounded-lg px-2 py-1"
+                                >
+                                  ซ่อนรุ่น
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -546,7 +581,24 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                                       {v.id}
                                     </td>
                                     <td className="py-3 px-4 font-bold text-slate-800 text-[13px]">
-                                      {v.color}
+                                      <div className="flex items-center gap-2">
+                                        {(v.image || group.modelImage) ? (
+                                          <img
+                                            src={v.image || group.modelImage}
+                                            className="w-9 h-9 rounded-lg object-cover border border-slate-200 cursor-zoom-in"
+                                            referrerPolicy="no-referrer"
+                                            onClick={() => {
+                                              setPreviewImage(v.image || group.modelImage || null);
+                                              setPreviewTitle(`${group.brandName} ${group.modelName} ${v.color}`);
+                                            }}
+                                          />
+                                        ) : (
+                                          <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center">
+                                            <Image className="w-4 h-4 text-slate-300" />
+                                          </div>
+                                        )}
+                                        <span>{v.color}</span>
+                                      </div>
                                     </td>
                                     <td className="py-3 px-4 text-center">
                                       <span className="inline-flex items-center justify-center">
@@ -576,6 +628,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                                             setVariantColor(v.color);
                                             setVariantModelId(v.model_id);
                                             setVariantStandardSalePrice(v.standard_sale_price ? String(v.standard_sale_price) : '');
+                                            setVariantImage(v.image || group.modelImage || '');
                                             setShowVariantForm(true);
                                           }}
                                           className="p-1 px-2 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-md transition-colors cursor-pointer flex items-center gap-1 text-[11px]"
@@ -605,7 +658,19 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                                 {/* Top row: Color and Actions */}
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="flex items-center gap-2">
-                                    <span className={`w-4 h-4 rounded-full shadow-inner ${getDynamicColorStyles(v.color)} shrink-0`} />
+                                    {(v.image || group.modelImage) ? (
+                                      <img
+                                        src={v.image || group.modelImage}
+                                        className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0"
+                                        referrerPolicy="no-referrer"
+                                        onClick={() => {
+                                          setPreviewImage(v.image || group.modelImage || null);
+                                          setPreviewTitle(`${group.brandName} ${group.modelName} ${v.color}`);
+                                        }}
+                                      />
+                                    ) : (
+                                      <span className={`w-4 h-4 rounded-full shadow-inner ${getDynamicColorStyles(v.color)} shrink-0`} />
+                                    )}
                                     <div>
                                       <span className="font-extrabold text-slate-800 text-[13px]">{v.color}</span>
                                       <span className="block text-[9px] font-mono text-slate-400">SKU: {v.id}</span>
@@ -618,6 +683,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                                         setVariantColor(v.color);
                                         setVariantModelId(v.model_id);
                                         setVariantStandardSalePrice(v.standard_sale_price ? String(v.standard_sale_price) : '');
+                                        setVariantImage(v.image || group.modelImage || '');
                                         setShowVariantForm(true);
                                       }}
                                       className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
@@ -1037,71 +1103,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                   className="w-full text-xs p-3 bg-slate-50 outline-hidden border border-slate-200 rounded-xl focus:border-emerald-700 focus:bg-white text-slate-800"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">รูปภาพสินค้าประจำรุ่น</label>
-                
-                {modelImage ? (
-                  <div className="relative w-32 h-32 rounded-xl overflow-hidden border border-slate-200 mb-3 bg-slate-50 flex items-center justify-center">
-                    <img src={modelImage} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    <button
-                      type="button"
-                      onClick={() => setModelImage('')}
-                      className="absolute top-1 right-1 bg-rose-600 hover:bg-rose-700 text-white p-1 rounded-full text-[10px] cursor-pointer shadow-md"
-                      title="ลบรูปภาพ"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ) : (
-                  <div className="w-32 h-32 rounded-xl border border-dashed border-slate-300 mb-3 bg-slate-50 flex flex-col items-center justify-center text-slate-400 gap-1">
-                    <Image className="w-6 h-6 text-slate-400" />
-                    <span className="text-[10px]">ไม่มีรูปภาพ</span>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <input
-                    type="text"
-                    placeholder="วางลิงก์รูปภาพ (URL)"
-                    value={modelImage}
-                    onChange={(e) => setModelImage(e.target.value)}
-                    className="w-full text-xs p-3 bg-slate-50 outline-hidden border border-slate-200 rounded-xl focus:border-emerald-700 focus:bg-white text-slate-800"
-                  />
-                  <div className="relative">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      id="model-image-file"
-                      className="hidden"
-                      disabled={uploadingImage}
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          if (file.size > 2 * 1024 * 1024) {
-                            alert("ขนาดไฟล์ภาพใหญ่เกินไป (กรุณาเลือกไฟล์ขนาดไม่เกิน 2MB เพื่อการบันทึกในระบบ)");
-                            return;
-                          }
-                          setUploadingImage(true);
-                          try {
-                            const url = await uploadModelImage(file);
-                            setModelImage(url);
-                          } catch (err: any) {
-                            alert(`อัปโหลดรูปสินค้าไม่สำเร็จ: ${err.message || err}`);
-                          } finally {
-                            setUploadingImage(false);
-                          }
-                        }
-                      }}
-                    />
-                    <label
-                      htmlFor="model-image-file"
-                      className="block text-center cursor-pointer border border-slate-200 hover:bg-slate-100 text-slate-700 font-semibold py-2 px-3 text-xs rounded-xl"
-                    >
-                      📁 อัปโหลดไฟล์รูปภาพจากเครื่อง
-                    </label>
-                  </div>
-                </div>
-              </div>
               <div className="flex gap-2 justify-end pt-2">
                 <button
                   type="button"
@@ -1187,6 +1188,68 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                       className="w-full text-xs p-3 bg-slate-50 outline-hidden border border-slate-200 rounded-xl focus:border-emerald-700 focus:bg-white text-slate-800 font-mono"
                     />
                   </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">รูปของสีนี้</label>
+                    {variantImage ? (
+                      <div className="relative w-32 h-32 rounded-xl overflow-hidden border border-slate-200 mb-3 bg-slate-50 flex items-center justify-center">
+                        <img src={variantImage} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        <button
+                          type="button"
+                          onClick={() => setVariantImage('')}
+                          className="absolute top-1 right-1 bg-rose-600 hover:bg-rose-700 text-white p-1 rounded-full text-[10px] cursor-pointer shadow-md"
+                          title="ลบรูปภาพ"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="w-32 h-32 rounded-xl border border-dashed border-slate-300 mb-3 bg-slate-50 flex flex-col items-center justify-center text-slate-400 gap-1">
+                        <Image className="w-6 h-6 text-slate-400" />
+                        <span className="text-[10px]">ไม่มีรูปภาพ</span>
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        placeholder="วางลิงก์รูปภาพของสีนี้ (URL)"
+                        value={variantImage}
+                        onChange={(e) => setVariantImage(e.target.value)}
+                        className="w-full text-xs p-3 bg-slate-50 outline-hidden border border-slate-200 rounded-xl focus:border-emerald-700 focus:bg-white text-slate-800"
+                      />
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          id="variant-image-file"
+                          className="hidden"
+                          disabled={uploadingImage}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            if (file.size > 2 * 1024 * 1024) {
+                              alert('ขนาดไฟล์ภาพใหญ่เกินไป กรุณาเลือกไม่เกิน 2MB');
+                              return;
+                            }
+                            setUploadingImage(true);
+                            try {
+                              const url = await uploadVariantImage(file);
+                              setVariantImage(url);
+                            } catch (err: any) {
+                              alert(`อัปโหลดรูปสินค้าไม่สำเร็จ: ${err.message || err}`);
+                            } finally {
+                              setUploadingImage(false);
+                            }
+                          }}
+                        />
+                        <label
+                          htmlFor="variant-image-file"
+                          className="block text-center cursor-pointer border border-slate-200 hover:bg-slate-100 text-slate-700 font-semibold py-2 px-3 text-xs rounded-xl"
+                        >
+                          อัปโหลดรูปสีนี้
+                        </label>
+                      </div>
+                    </div>
+                  </div>
                   <div className="p-3 bg-emerald-50/55 rounded-xl border border-emerald-100 text-[11px] text-slate-600 leading-relaxed">
                     💡 <strong>คำแนะนำ:</strong> เมื่อเพิ่มสีหลักใหม่เป็น SKU ตัวนี้ ระบบหลังบ้านจะบันทึกราคาขายเริ่มต้นและคำนวณ WAC ทันทีเมื่อสินค้าเข้าระบบ
                   </div>
@@ -1202,7 +1265,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={activeModels.length === 0 || savingForm === 'variant'}
+                  disabled={activeModels.length === 0 || savingForm === 'variant' || uploadingImage}
                   className="px-5 py-2 text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 text-white rounded-xl"
                 >
                   บันทึกข้อมูลสินค้า

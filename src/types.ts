@@ -23,6 +23,7 @@ export interface Variant {
   id: string;
   model_id: string;
   color: string;
+  image?: string;
   qty_in_stock: number; // calculated/sync'd count of active in_stock StockItems
   current_wac: number;  // weighted average cost (auto calculated)
   standard_sale_price?: number; // standard selling price of this model/color
