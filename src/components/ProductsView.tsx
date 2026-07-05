@@ -182,42 +182,57 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       .catch((err: any) => alert(`ซ่อนสีสินค้าไม่สำเร็จ: ${err.message || err}`));
   };
 
-  const activeBrands = data.brands.filter((brand) => brand.is_active !== false);
-  const activeModels = data.models.filter((model) => {
-    const brand = data.brands.find((item) => item.id === model.brand_id);
-    return model.is_active !== false && brand?.is_active !== false;
-  });
-  const activeVariants = data.variants.filter((variant) => {
-    const model = data.models.find((item) => item.id === variant.model_id);
-    const brand = model ? data.brands.find((item) => item.id === model.brand_id) : null;
-    return variant.is_active !== false && model?.is_active !== false && brand?.is_active !== false;
-  });
+  const brandById = React.useMemo(() => new Map(data.brands.map((b) => [b.id, b])), [data.brands]);
+  const modelById = React.useMemo(() => new Map(data.models.map((m) => [m.id, m])), [data.models]);
+
+  const activeBrands = React.useMemo(
+    () => data.brands.filter((brand) => brand.is_active !== false),
+    [data.brands]
+  );
+  const activeModels = React.useMemo(
+    () => data.models.filter((model) => {
+      const brand = brandById.get(model.brand_id);
+      return model.is_active !== false && brand?.is_active !== false;
+    }),
+    [brandById, data.models]
+  );
+  const activeVariants = React.useMemo(
+    () => data.variants.filter((variant) => {
+      const model = modelById.get(variant.model_id);
+      const brand = model ? brandById.get(model.brand_id) : null;
+      return variant.is_active !== false && model?.is_active !== false && brand?.is_active !== false;
+    }),
+    [brandById, data.variants, modelById]
+  );
 
   // --- FILTERED VARIANTS ---
-  const filteredVariants = data.variants.map(v => {
-    const model = data.models.find(m => m.id === v.model_id);
-    const brand = model ? data.brands.find(b => b.id === model.brand_id) : null;
-    return {
-      ...v,
-      modelName: model?.name || 'ไม่มีรุ่น',
-      brandName: brand?.name || 'ไม่มีแบรนด์',
-      brandId: brand?.id || ''
-    };
-  }).filter(item => {
-    if (item.is_active === false) {
-      return false;
-    }
-    if (selectedBrandId !== 'all' && item.brandId !== selectedBrandId) {
-      return false;
-    }
-    const searchLow = searchQuery.toLowerCase();
-    return (
-      item.color.toLowerCase().includes(searchLow) ||
-      item.modelName.toLowerCase().includes(searchLow) ||
-      item.brandName.toLowerCase().includes(searchLow) ||
-      item.id.toLowerCase().includes(searchLow)
-    );
-  });
+  const filteredVariants = React.useMemo(() => {
+    return data.variants.map(v => {
+      const model = modelById.get(v.model_id);
+      const brand = model ? brandById.get(model.brand_id) : null;
+      return {
+        ...v,
+        modelName: model?.name || 'ไม่มีรุ่น',
+        brandName: brand?.name || 'ไม่มีแบรนด์',
+        brandId: brand?.id || ''
+      };
+    }).filter(item => {
+      if (item.is_active === false) {
+        return false;
+      }
+      if (selectedBrandId !== 'all' && item.brandId !== selectedBrandId) {
+        return false;
+      }
+      const searchLow = searchQuery.toLowerCase().trim();
+      if (!searchLow) return true;
+      return (
+        item.color.toLowerCase().includes(searchLow) ||
+        item.modelName.toLowerCase().includes(searchLow) ||
+        item.brandName.toLowerCase().includes(searchLow) ||
+        item.id.toLowerCase().includes(searchLow)
+      );
+    });
+  }, [brandById, data.variants, modelById, searchQuery, selectedBrandId]);
 
   const getDynamicColorStyles = (colorName: string) => {
     const low = colorName.toLowerCase();

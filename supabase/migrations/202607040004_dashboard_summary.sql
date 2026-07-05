@@ -20,7 +20,13 @@ begin
   v_month_start := (p_month || '-01')::date;
   v_month_end := (v_month_start + interval '1 month')::date;
 
-  with order_totals as (
+  with filtered_month_orders as (
+    select id, date, channel, status, shipping_fee, shipping_cost, discount
+    from public.orders
+    where date >= v_month_start
+      and date < v_month_end
+  ),
+  month_order_totals as (
     select
       o.id,
       o.date,
@@ -33,15 +39,28 @@ begin
         + coalesce(o.shipping_fee, 0)
         - coalesce(o.shipping_cost, 0)
         - coalesce(o.discount, 0) as profit
-    from public.orders o
+    from filtered_month_orders o
     left join public.order_items oi on oi.order_id = o.id
-    group by o.id
+    group by o.id, o.date, o.channel, o.status, o.shipping_fee, o.shipping_cost, o.discount
   ),
-  month_order_totals as (
-    select *
-    from order_totals
-    where date >= v_month_start
-      and date < v_month_end
+  recent_5_orders as (
+    select id, date, channel, status, shipping_fee, discount
+    from public.orders
+    order by date desc, id desc
+    limit 5
+  ),
+  recent_order_totals as (
+    select
+      r.id,
+      r.date,
+      r.channel,
+      r.status,
+      coalesce(sum(oi.final_price), 0)
+        + coalesce(r.shipping_fee, 0)
+        - coalesce(r.discount, 0) as revenue
+    from recent_5_orders r
+    left join public.order_items oi on oi.order_id = r.id
+    group by r.id, r.date, r.channel, r.status, r.shipping_fee, r.discount
   ),
   purchase_totals as (
     select
@@ -95,12 +114,7 @@ begin
         )
         order by recent.date desc, recent.id desc
       )
-      from (
-        select *
-        from order_totals
-        order by date desc, id desc
-        limit 5
-      ) recent
+      from recent_order_totals recent
     ), '[]'::jsonb),
     'low_stock_variants', coalesce((
       select jsonb_agg(
