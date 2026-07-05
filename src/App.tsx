@@ -61,9 +61,17 @@ export default function App() {
     loadingDashboard,
     loadingSlices,
     loadedSlices,
+    orderFilters,
+    ordersTotalCount,
+    ordersHasMore,
+    purchaseTotalCount,
+    purchaseHasMore,
     ensureProductsLoaded,
     ensurePurchaseLoaded,
     ensureOrdersLoaded,
+    loadMoreOrders,
+    loadMorePurchaseBatches,
+    setOrderFilters,
     error
   } = useAppData();
 
@@ -142,7 +150,16 @@ export default function App() {
         );
       case 'purchase':
         if (loadingSlices.purchase && !loadedSlices.purchase) return sliceLoading('กำลังโหลดข้อมูลรับเข้าคลัง...');
-        return <PurchaseView data={data} addPurchaseBatch={addPurchaseBatch} />;
+        return (
+          <PurchaseView
+            data={data}
+            addPurchaseBatch={addPurchaseBatch}
+            loadMorePurchaseBatches={loadMorePurchaseBatches}
+            purchaseHasMore={purchaseHasMore}
+            purchaseTotalCount={purchaseTotalCount}
+            loadingPurchase={loadingSlices.purchase}
+          />
+        );
       case 'orders':
         if (loadingSlices.orders && !loadedSlices.orders) return sliceLoading('กำลังโหลดข้อมูลออเดอร์...');
         return (
@@ -154,6 +171,12 @@ export default function App() {
             updateOrderStatus={updateOrderStatus}
             deleteOrder={deleteOrder}
             updateDelivery={updateDelivery}
+            orderFilters={orderFilters}
+            setOrderFilters={setOrderFilters}
+            loadMoreOrders={loadMoreOrders}
+            ordersHasMore={ordersHasMore}
+            ordersTotalCount={ordersTotalCount}
+            loadingOrders={loadingSlices.orders}
           />
         );
       default:

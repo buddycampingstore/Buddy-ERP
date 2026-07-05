@@ -101,6 +101,13 @@ export interface DashboardSummary {
   daily_sales: DashboardDailySalesPoint[];
 }
 
+export interface ProductsPayload {
+  brands: Brand[];
+  models: Model[];
+  variants: Variant[];
+  stock_summary: StockSummary[];
+}
+
 export interface Customer {
   id: string;
   name: string;
@@ -149,6 +156,24 @@ export interface Delivery {
   tracking: string; // tracking number or empty
   pickup_datetime: string; // empty or YYYY-MM-DDTHH:mm
   status: DeliveryStatus;
+}
+
+export type OrderStatusFilter = OrderStatus | 'all';
+
+export interface OrderPageFilters {
+  status: OrderStatusFilter;
+  search: string;
+}
+
+export interface PaginatedOrdersPayload {
+  orders: Order[];
+  deliveries: Delivery[];
+  total_count: number;
+}
+
+export interface PaginatedPurchasePayload {
+  purchase_batches: PurchaseBatch[];
+  total_count: number;
 }
 
 // Full application data state stored in LocalStorage

@@ -11,9 +11,10 @@ import {
   OrderStatus,
   Delivery,
   DeliveryStatus,
-  DeliveryType
+  DeliveryType,
+  OrderPageFilters
 } from '../types';
-import { getOrderProfit, getOrderRevenue, getOrderSubtotal, getVariantStockQty } from '../lib/finance';
+import { getOrderProfit, getOrderRevenue, getOrderSubtotal } from '../lib/finance';
 import {
   Plus,
   Trash2,
@@ -50,6 +51,12 @@ interface OrdersViewProps {
   updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
   deleteOrder: (orderId: string) => Promise<void>;
   updateDelivery: (orderId: string, updates: Partial<Delivery>) => Promise<void>;
+  orderFilters: OrderPageFilters;
+  setOrderFilters: (filters: OrderPageFilters) => void;
+  loadMoreOrders: () => Promise<void>;
+  ordersHasMore: boolean;
+  ordersTotalCount: number;
+  loadingOrders: boolean;
 }
 
 interface NewOrderItem {
@@ -66,24 +73,65 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   createOrder,
   updateOrderStatus,
   deleteOrder,
-  updateDelivery
+  updateDelivery,
+  orderFilters,
+  setOrderFilters,
+  loadMoreOrders,
+  ordersHasMore,
+  ordersTotalCount,
+  loadingOrders
 }) => {
   void updateCustomer;
 
-  const activeBrands = data.brands.filter((brand) => brand.is_active !== false);
-  const activeModels = data.models.filter((model) => {
-    const brand = data.brands.find((item) => item.id === model.brand_id);
-    return model.is_active !== false && brand?.is_active !== false;
-  });
-  const activeVariants = data.variants.filter((variant) => {
-    const model = data.models.find((item) => item.id === variant.model_id);
-    const brand = model ? data.brands.find((item) => item.id === model.brand_id) : null;
-    return variant.is_active !== false && model?.is_active !== false && brand?.is_active !== false;
-  });
+  const brandById = React.useMemo(() => new Map(data.brands.map((brand) => [brand.id, brand])), [data.brands]);
+  const modelById = React.useMemo(() => new Map(data.models.map((model) => [model.id, model])), [data.models]);
+  const variantById = React.useMemo(() => new Map(data.variants.map((variant) => [variant.id, variant])), [data.variants]);
+  const deliveryByOrderId = React.useMemo(() => new Map(data.deliveries.map((delivery) => [delivery.order_id, delivery])), [data.deliveries]);
+  const stockQtyByVariantId = React.useMemo(
+    () => new Map(data.stockSummary.map((item) => [item.variant_id, item.in_stock_qty])),
+    [data.stockSummary]
+  );
+
+  const activeBrands = React.useMemo(
+    () => data.brands.filter((brand) => brand.is_active !== false),
+    [data.brands]
+  );
+  const activeModels = React.useMemo(
+    () => data.models.filter((model) => {
+      const brand = brandById.get(model.brand_id);
+      return model.is_active !== false && brand?.is_active !== false;
+    }),
+    [brandById, data.models]
+  );
+  const activeVariants = React.useMemo(
+    () => data.variants.filter((variant) => {
+      const model = modelById.get(variant.model_id);
+      const brand = model ? brandById.get(model.brand_id) : null;
+      return variant.is_active !== false && model?.is_active !== false && brand?.is_active !== false;
+    }),
+    [brandById, data.variants, modelById]
+  );
+  const activeModelsByBrand = React.useMemo(() => {
+    const grouped = new Map<string, typeof activeModels>();
+    activeModels.forEach((model) => {
+      const list = grouped.get(model.brand_id) || [];
+      list.push(model);
+      grouped.set(model.brand_id, list);
+    });
+    return grouped;
+  }, [activeModels]);
+  const activeVariantsByModel = React.useMemo(() => {
+    const grouped = new Map<string, typeof activeVariants>();
+    activeVariants.forEach((variant) => {
+      const list = grouped.get(variant.model_id) || [];
+      list.push(variant);
+      grouped.set(variant.model_id, list);
+    });
+    return grouped;
+  }, [activeVariants]);
 
   const [isAdding, setIsAdding] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchDraft, setSearchDraft] = useState(orderFilters.search);
   const [editingDeliveryOrderId, setEditingDeliveryOrderId] = useState<string | null>(null);
   const [trackingNo, setTrackingNo] = useState('');
   const [pickupDate, setPickupDate] = useState('');
@@ -92,6 +140,21 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   // --- IMAGE LIGHTBOX STATE ---
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState<string>('');
+
+  React.useEffect(() => {
+    setSearchDraft(orderFilters.search);
+  }, [orderFilters.search]);
+
+  React.useEffect(() => {
+    const nextSearch = searchDraft.trim();
+    if (nextSearch === orderFilters.search) return;
+
+    const timer = window.setTimeout(() => {
+      setOrderFilters({ status: orderFilters.status, search: nextSearch });
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [orderFilters.search, orderFilters.status, searchDraft, setOrderFilters]);
 
   // --- NEW SALES ORDER FORM STATE ---
   const [customerId, setCustomerId] = useState('general');
@@ -119,7 +182,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const numberInputValue = (value: number) => value === 0 ? '' : value;
 
   const startEditDelivery = (orderId: string) => {
-    const delivery = data.deliveries.find(item => item.order_id === orderId);
+    const delivery = deliveryByOrderId.get(orderId);
     setEditingDeliveryOrderId(orderId);
     setTrackingNo(delivery?.tracking || '');
     setPickupDate(delivery?.pickup_datetime || '');
@@ -152,7 +215,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   // --- FORM HANDLERS ---
   const handleAddItemRow = () => {
     const firstId = activeVariants[0]?.id || '';
-    const v = activeVariants.find(variant => variant.id === firstId);
+    const v = variantById.get(firstId);
     const defaultPrice = (v && v.standard_sale_price !== undefined) ? v.standard_sale_price : 2200;
     setItems([...items, { variant_id: firstId, qty: 1, sale_price: defaultPrice, discount: 0 }]);
   };
@@ -171,7 +234,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         };
         // Auto-fill standard sale price when variant is selected
         if (field === 'variant_id') {
-          const v = activeVariants.find(variant => variant.id === value);
+          const v = variantById.get(value);
           if (v && v.standard_sale_price !== undefined) {
             updated.sale_price = v.standard_sale_price;
           }
@@ -248,8 +311,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
   // --- REAL-TIME CALCULATIONS ---
   const calculatedItems = items.map(item => {
-    const variant = activeVariants.find(v => v.id === item.variant_id);
-    const stockOnHand = getVariantStockQty(data.stockSummary, item.variant_id);
+    const variant = variantById.get(item.variant_id);
+    const stockOnHand = stockQtyByVariantId.get(item.variant_id) || 0;
     const wac = variant?.current_wac || 0;
     const itemTotal = (item.sale_price - item.discount) * item.qty;
     const costBasisTotal = wac * item.qty;
@@ -268,37 +331,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const totalCost_สด = calculatedItems.reduce((sum, item) => sum + (item.wac * item.qty), 0) + (deliveryType === 'shipping' ? shippingCost : 0);
   const totalProfit_สด = totalSale_สด - totalCost_สด;
 
-  // --- FILTERED ORDERS LIST ---
-  const filteredOrders = data.orders.filter(order => {
-    // 1. Filter by status
-    if (statusFilter !== 'all' && order.status !== statusFilter) {
-      return false;
-    }
-
-    // 2. Filter by search query
-    if (searchQuery.trim() !== '') {
-      const searchLow = searchQuery.toLowerCase();
-
-      const matchId = order.id.toLowerCase().includes(searchLow);
-      const matchCustomer = (order.customer_name_snapshot || '').toLowerCase().includes(searchLow);
-
-      const matchItems = order.items.some(oi => {
-        const v = data.variants.find(varItem => varItem.id === oi.variant_id);
-        const m = v ? data.models.find(mod => mod.id === v.model_id) : null;
-        return (
-          m?.name.toLowerCase().includes(searchLow) ||
-          v?.color.toLowerCase().includes(searchLow) ||
-          oi.model_name_snapshot.toLowerCase().includes(searchLow) ||
-          oi.variant_color_snapshot.toLowerCase().includes(searchLow) ||
-          oi.brand_name_snapshot.toLowerCase().includes(searchLow)
-        );
-      });
-
-      return matchId || matchCustomer || matchItems;
-    }
-
-    return true;
-  });
+  const visibleOrders = data.orders;
 
   const statusClassMap = {
     'pending': 'bg-slate-100 text-slate-600 border border-slate-200',
@@ -569,13 +602,13 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                 {/* Rows mapped */}
                 <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
                   {items.map((item, idx) => {
-                    const variant = activeVariants.find(v => v.id === item.variant_id);
-                    const stockOnHand = getVariantStockQty(data.stockSummary, item.variant_id);
+                    const variant = variantById.get(item.variant_id);
+                    const stockOnHand = stockQtyByVariantId.get(item.variant_id) || 0;
                     const error = stockOnHand < item.qty;
 
                     // Resolve current parent hierarchy for Brand -> Model -> Variant
-                    const currentModel = variant ? activeModels.find(m => m.id === variant.model_id) : null;
-                    const currentBrand = currentModel ? activeBrands.find(b => b.id === currentModel.brand_id) : null;
+                    const currentModel = variant ? modelById.get(variant.model_id) : null;
+                    const currentBrand = currentModel ? brandById.get(currentModel.brand_id) : null;
 
                     const activeBrandId = currentBrand?.id || '';
                     const activeModelId = currentModel?.id || '';
@@ -583,20 +616,20 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                     const currentImage = variant?.image || currentModel?.image || '';
 
                     // Filter cascading levels
-                    const modelsForBrand = activeModels.filter(m => m.brand_id === activeBrandId);
-                    const variantsForModel = activeVariants.filter(v => v.model_id === activeModelId);
+                    const modelsForBrand = activeModelsByBrand.get(activeBrandId) || [];
+                    const variantsForModel = activeVariantsByModel.get(activeModelId) || [];
 
                     // Re-routing changers
                     const handleBrandChange = (bId: string) => {
-                      const brandModels = activeModels.filter(m => m.brand_id === bId);
+                      const brandModels = activeModelsByBrand.get(bId) || [];
                       const matchedModel = brandModels[0];
-                      const modelVariants = matchedModel ? activeVariants.filter(v => v.model_id === matchedModel.id) : [];
+                      const modelVariants = matchedModel ? activeVariantsByModel.get(matchedModel.id) || [] : [];
                       const nextVariantId = modelVariants[0]?.id || '';
                       handleUpdateItemRow(idx, 'variant_id', nextVariantId);
                     };
 
                     const handleModelChange = (mId: string) => {
-                      const modelVariants = activeVariants.filter(v => v.model_id === mId);
+                      const modelVariants = activeVariantsByModel.get(mId) || [];
                       const nextVariantId = modelVariants[0]?.id || '';
                       handleUpdateItemRow(idx, 'variant_id', nextVariantId);
                     };
@@ -831,14 +864,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
             {/* Left side Search */}
             <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl flex-1 max-w-sm text-xs">
               <Search className="w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="ค้นหารหัสบิล, ลูกค้า, เบอร์โทรศ์ หรือ รุ่น..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-transparent outline-hidden w-full text-slate-700 text-xs"
-              />
-            </div>
+	              <input
+	                type="text"
+	                placeholder="ค้นหารหัสบิล, ลูกค้า, เบอร์โทรศ์ หรือ รุ่น..."
+	                value={searchDraft}
+	                onChange={(e) => setSearchDraft(e.target.value)}
+	                className="bg-transparent outline-hidden w-full text-slate-700 text-xs"
+	              />
+	            </div>
 
             {/* Right side status toggles */}
             <div className="flex gap-1.5 overflow-x-auto text-[11px] bg-slate-100 p-1 rounded-xl self-start" id="status-filter-group">
@@ -847,14 +880,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                 { id: 'confirmed', label: 'รอส่ง' },
                 { id: 'shipped', label: 'ส่งแล้ว' },
                 { id: 'delivered', label: 'สำเร็จ' }
-              ].map(f => (
-                <button
-                  key={f.id}
-                  onClick={() => setStatusFilter(f.id)}
-                  className={`py-1.5 px-3.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                    statusFilter === f.id
-                      ? 'bg-white text-slate-800 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-700'
+	              ].map(f => (
+	                <button
+	                  key={f.id}
+	                  onClick={() => setOrderFilters({ status: f.id as OrderPageFilters['status'], search: searchDraft.trim() })}
+	                  className={`py-1.5 px-3.5 rounded-lg font-semibold transition-all cursor-pointer ${
+	                    orderFilters.status === f.id
+	                      ? 'bg-white text-slate-800 shadow-xs'
+	                      : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
                   {f.label}
@@ -864,14 +897,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
           </div>
 
           {/* Orders timeline Cards */}
-          <div className="space-y-3" id="orders-grid">
-            {filteredOrders.length > 0 ? (
-              filteredOrders.map(order => {
-                const orderSubTotal = getOrderSubtotal(order);
-                const orderNetAmount = getOrderRevenue(order);
-                const totalBatchProfit = getOrderProfit(order);
-                const delivery = data.deliveries.find(item => item.order_id === order.id);
-                const isEditingDelivery = editingDeliveryOrderId === order.id;
+	          <div className="space-y-3" id="orders-grid">
+	            {visibleOrders.length > 0 ? (
+	              visibleOrders.map(order => {
+	                const orderSubTotal = getOrderSubtotal(order);
+	                const orderNetAmount = getOrderRevenue(order);
+	                const totalBatchProfit = getOrderProfit(order);
+	                const delivery = deliveryByOrderId.get(order.id);
+	                const isEditingDelivery = editingDeliveryOrderId === order.id;
 
                 return (
                   <div
@@ -924,10 +957,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                       </div>
                       <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-[11px] space-y-1">
                         <strong className="text-slate-500 block mb-1">รายการเก้าอี้ในบิล ({order.items.length} ตัว):</strong>
-                        {order.items.map((oi, idx) => {
-                          const variant = data.variants.find(v => v.id === oi.variant_id);
-                          const model = variant ? data.models.find(m => m.id === variant.model_id) : null;
-                          const brand = model ? data.brands.find(b => b.id === model.brand_id) : null;
+	                        {order.items.map((oi, idx) => {
+	                          const variant = variantById.get(oi.variant_id);
+	                          const model = variant ? modelById.get(variant.model_id) : null;
+	                          const brand = model ? brandById.get(model.brand_id) : null;
                           const displayModelName = model?.name || oi.model_name_snapshot || 'สินค้าเดิม';
                           const displayVariantColor = variant?.color || oi.variant_color_snapshot || '-';
                           const displayBrandName = brand?.name || oi.brand_name_snapshot || 'เก้าอี้';
@@ -1116,11 +1149,27 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
             ) : (
               <div className="bg-white p-12 text-center text-slate-400 border border-slate-150 rounded-2xl">
                 ไม่พบบันทึกใบสั่งซื้อตามตัวกรองที่เลือก
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+	              </div>
+	            )}
+	          </div>
+
+	          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-slate-500 bg-white border border-slate-100 rounded-2xl p-4">
+	            <span>
+	              แสดง {visibleOrders.length.toLocaleString('th-TH')} จาก {ordersTotalCount.toLocaleString('th-TH')} บิล
+	            </span>
+	            {ordersHasMore && (
+	              <button
+	                type="button"
+	                onClick={() => loadMoreOrders()}
+	                disabled={loadingOrders}
+	                className="self-start sm:self-auto px-4 py-2 rounded-xl bg-slate-900 text-white font-bold disabled:bg-slate-300"
+	              >
+	                {loadingOrders ? 'กำลังโหลด...' : 'โหลดออเดอร์เพิ่มเติม'}
+	              </button>
+	            )}
+	          </div>
+	        </div>
+	      )}
 
       {/* Quick Customer modal removed */}
 

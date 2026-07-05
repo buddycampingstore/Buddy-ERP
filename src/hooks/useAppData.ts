@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AppData,
   Brand,
@@ -12,9 +12,13 @@ import {
   Delivery,
   DeliveryType,
   Model,
+  OrderPageFilters,
   OrderChannel,
   OrderItem,
   OrderStatus,
+  PaginatedOrdersPayload,
+  PaginatedPurchasePayload,
+  ProductsPayload,
   StockItem,
   StockSummary,
   Variant
@@ -23,6 +27,7 @@ import { supabase } from '../lib/supabase';
 
 const BACKUP_SCHEMA_VERSION = 2;
 const GENERAL_CUSTOMER_NAME = 'ลูกค้าทั่วไป';
+export const DEFAULT_PAGE_SIZE = 50;
 
 const EMPTY_DATA: AppData = {
   schema_version: BACKUP_SCHEMA_VERSION,
@@ -196,7 +201,7 @@ const buildPurchaseBatches = (batches: any[] = [], items: DbPurchaseBatchItem[] 
     list.push({
       batch_id: item.batch_id,
       variant_id: item.variant_id,
-      qty: item.qty,
+      qty: Number(item.qty),
       unit_price: Number(item.unit_price)
     });
     purchaseItemsByBatch.set(item.batch_id, list);
@@ -212,39 +217,43 @@ const buildPurchaseBatches = (batches: any[] = [], items: DbPurchaseBatchItem[] 
   })));
 };
 
+const mapOrderItem = (item: any): OrderItem => ({
+  id: item.id,
+  stock_item_id: item.stock_item_id,
+  variant_id: item.variant_id,
+  sale_price: Number(item.sale_price),
+  discount: Number(item.discount),
+  final_price: Number(item.final_price),
+  wac_at_sale: Number(item.wac_at_sale),
+  profit: Number(item.profit),
+  brand_name_snapshot: item.brand_name_snapshot || '',
+  model_name_snapshot: item.model_name_snapshot || '',
+  variant_color_snapshot: item.variant_color_snapshot || ''
+});
+
+const mapOrder = (order: any, items: any[] = []): AppData['orders'][number] => ({
+  id: order.id,
+  customer_id: order.customer_id && order.customer_id !== 'general' ? order.customer_id : null,
+  customer_name_snapshot: order.customer_name_snapshot || GENERAL_CUSTOMER_NAME,
+  date: order.date,
+  channel: order.channel,
+  status: order.status,
+  delivery_type: order.delivery_type,
+  discount: Number(order.discount || 0),
+  items: items.map(mapOrderItem),
+  shipping_fee: Number(order.shipping_fee || 0),
+  shipping_cost: Number(order.shipping_cost || 0)
+});
+
 const buildOrders = (orders: any[] = [], items: DbOrderItem[] = []) => {
   const orderItemsByOrder = new Map<string, OrderItem[]>();
   items.forEach((item) => {
     const list = orderItemsByOrder.get(item.order_id) || [];
-    list.push({
-      id: item.id,
-      stock_item_id: item.stock_item_id,
-      variant_id: item.variant_id,
-      sale_price: Number(item.sale_price),
-      discount: Number(item.discount),
-      final_price: Number(item.final_price),
-      wac_at_sale: Number(item.wac_at_sale),
-      profit: Number(item.profit),
-      brand_name_snapshot: item.brand_name_snapshot || '',
-      model_name_snapshot: item.model_name_snapshot || '',
-      variant_color_snapshot: item.variant_color_snapshot || ''
-    });
+    list.push(mapOrderItem(item));
     orderItemsByOrder.set(item.order_id, list);
   });
 
-  return sortByDateDesc(orders.map((order: any) => ({
-    id: order.id,
-    customer_id: order.customer_id && order.customer_id !== 'general' ? order.customer_id : null,
-    customer_name_snapshot: order.customer_name_snapshot || GENERAL_CUSTOMER_NAME,
-    date: order.date,
-    channel: order.channel,
-    status: order.status,
-    delivery_type: order.delivery_type,
-    discount: Number(order.discount || 0),
-    items: orderItemsByOrder.get(order.id) || [],
-    shipping_fee: Number(order.shipping_fee || 0),
-    shipping_cost: Number(order.shipping_cost || 0)
-  })));
+  return sortByDateDesc(orders.map((order: any) => mapOrder(order, orderItemsByOrder.get(order.id) || [])));
 };
 
 const normalizeBackup = (value: unknown): AppData => {
@@ -287,6 +296,44 @@ const normalizeBackup = (value: unknown): AppData => {
   };
 };
 
+export const mergeUniqueById = <T extends { id: string }>(current: T[], incoming: T[]) => {
+  const merged = new Map<string, T>();
+  current.forEach((item) => merged.set(item.id, item));
+  incoming.forEach((item) => merged.set(item.id, item));
+  return Array.from(merged.values());
+};
+
+export const mapProductsPayload = (payload: any): ProductsPayload => ({
+  brands: Array.isArray(payload?.brands) ? payload.brands.map(mapBrand) : [],
+  models: Array.isArray(payload?.models) ? payload.models.map(mapModel) : [],
+  variants: Array.isArray(payload?.variants) ? payload.variants.map(mapVariant) : [],
+  stock_summary: Array.isArray(payload?.stock_summary)
+    ? payload.stock_summary.map(mapStockSummary)
+    : []
+});
+
+export const mapOrdersPagePayload = (payload: any): PaginatedOrdersPayload => ({
+  orders: Array.isArray(payload?.orders)
+    ? sortByDateDesc(payload.orders.map((order: any) => mapOrder(order, Array.isArray(order.items) ? order.items : [])))
+    : [],
+  deliveries: Array.isArray(payload?.deliveries) ? payload.deliveries.map(mapDelivery) : [],
+  total_count: Number(payload?.total_count || 0)
+});
+
+export const mapPurchasePagePayload = (payload: any): PaginatedPurchasePayload => ({
+  purchase_batches: Array.isArray(payload?.purchase_batches)
+    ? buildPurchaseBatches(
+        payload.purchase_batches,
+        payload.purchase_batches.flatMap((batch: any) =>
+          Array.isArray(batch.items)
+            ? batch.items.map((item: any) => ({ ...item, batch_id: item.batch_id || batch.id }))
+            : []
+        )
+      )
+    : [],
+  total_count: Number(payload?.total_count || 0)
+});
+
 export function useAppData() {
   const [data, setData] = useState<AppData>(EMPTY_DATA);
   const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null);
@@ -294,7 +341,13 @@ export function useAppData() {
   const [loadingDashboard, setLoadingDashboard] = useState(true);
   const [loadingSlices, setLoadingSlices] = useState<SliceState>(EMPTY_SLICE_STATE);
   const [loadedSlices, setLoadedSlices] = useState<SliceState>(EMPTY_SLICE_STATE);
+  const [ordersTotalCount, setOrdersTotalCount] = useState(0);
+  const [purchaseTotalCount, setPurchaseTotalCount] = useState(0);
+  const [orderFilters, setOrderFiltersState] = useState<OrderPageFilters>({ status: 'all', search: '' });
   const [error, setError] = useState<string | null>(null);
+  const productsRequestRef = useRef<Promise<ProductsPayload> | null>(null);
+  const customersLoadedRef = useRef(false);
+  const ordersRequestSeqRef = useRef(0);
 
   const setSliceLoading = useCallback((slice: DataSlice, value: boolean) => {
     setLoadingSlices(prev => ({ ...prev, [slice]: value }));
@@ -312,25 +365,27 @@ export function useAppData() {
     return (variants || []).map(mapVariant);
   }, []);
 
-  const fetchProducts = useCallback(async () => {
-    const [brandsRes, modelsRes, variantsRes, stockSummary] = await Promise.all([
-      supabase.from('brands').select('*').order('name'),
-      supabase.from('models').select('*').order('name'),
-      supabase.from('variants').select('*').order('color'),
-      fetchStockSummary()
-    ]);
+  const fetchProducts = useCallback(async (force = false) => {
+    if (!force && productsRequestRef.current) {
+      return productsRequestRef.current;
+    }
 
-    assertNoError(brandsRes.error);
-    assertNoError(modelsRes.error);
-    assertNoError(variantsRes.error);
+    let request: Promise<ProductsPayload>;
+    request = (async () => {
+      try {
+        const { data: payload, error } = await supabase.rpc('get_products_payload');
+        assertNoError(error);
+        return mapProductsPayload(payload);
+      } finally {
+        if (productsRequestRef.current === request) {
+          productsRequestRef.current = null;
+        }
+      }
+    })();
 
-    return {
-      brands: (brandsRes.data || []).map(mapBrand),
-      models: (modelsRes.data || []).map(mapModel),
-      variants: (variantsRes.data || []).map(mapVariant),
-      stockSummary
-    };
-  }, [fetchStockSummary]);
+    productsRequestRef.current = request;
+    return request;
+  }, []);
 
   const fetchCustomers = useCallback(async () => {
     const { data: customers, error } = await supabase.from('customers').select('*').order('name');
@@ -349,6 +404,15 @@ export function useAppData() {
     return buildPurchaseBatches(purchaseBatchesRes.data || [], purchaseBatchItemsRes.data || []);
   }, []);
 
+  const fetchPurchasePage = useCallback(async (offset = 0) => {
+    const { data: payload, error } = await supabase.rpc('get_purchase_page', {
+      p_limit: DEFAULT_PAGE_SIZE,
+      p_offset: offset
+    });
+    assertNoError(error);
+    return mapPurchasePagePayload(payload);
+  }, []);
+
   const fetchOrdersAndDeliveries = useCallback(async () => {
     const [ordersRes, orderItemsRes, deliveriesRes] = await Promise.all([
       supabase.from('orders').select('*').order('date', { ascending: false }),
@@ -364,6 +428,17 @@ export function useAppData() {
       orders: buildOrders(ordersRes.data || [], orderItemsRes.data || []),
       deliveries: (deliveriesRes.data || []).map(mapDelivery)
     };
+  }, []);
+
+  const fetchOrdersPage = useCallback(async (filters: OrderPageFilters, offset = 0) => {
+    const { data: payload, error } = await supabase.rpc('get_orders_page', {
+      p_limit: DEFAULT_PAGE_SIZE,
+      p_offset: offset,
+      p_status: filters.status,
+      p_search: filters.search.trim() || null
+    });
+    assertNoError(error);
+    return mapOrdersPagePayload(payload);
   }, []);
 
   const loadDashboard = useCallback(async (month = getLocalYearMonth()) => {
@@ -429,18 +504,23 @@ export function useAppData() {
         deliveriesRes
       ].forEach((result) => assertNoError(result.error));
 
+      const purchaseBatches = buildPurchaseBatches(purchaseBatchesRes.data || [], purchaseBatchItemsRes.data || []);
+      const orders = buildOrders(ordersRes.data || [], orderItemsRes.data || []);
       setData({
         schema_version: BACKUP_SCHEMA_VERSION,
         brands: (brandsRes.data || []).map(mapBrand),
         models: (modelsRes.data || []).map(mapModel),
         variants: (variantsRes.data || []).map(mapVariant),
-        purchaseBatches: buildPurchaseBatches(purchaseBatchesRes.data || [], purchaseBatchItemsRes.data || []),
+        purchaseBatches,
         stockItems: [],
         stockSummary: (stockSummaryRes.data || []).map(mapStockSummary),
         customers: (customersRes.data || []).map(mapCustomer),
-        orders: buildOrders(ordersRes.data || [], orderItemsRes.data || []),
+        orders,
         deliveries: (deliveriesRes.data || []).map(mapDelivery)
       });
+      customersLoadedRef.current = true;
+      setPurchaseTotalCount(purchaseBatches.length);
+      setOrdersTotalCount(orders.length);
     } catch (err: any) {
       const message = err?.message || 'โหลดข้อมูลจาก Supabase ไม่สำเร็จ';
       setError(message);
@@ -457,14 +537,14 @@ export function useAppData() {
     setError(null);
 
     try {
-      const products = await fetchProducts();
+      const products = await fetchProducts(force);
       setData(prev => ({
         ...prev,
         brands: products.brands,
         models: products.models,
         variants: products.variants,
         stockItems: [],
-        stockSummary: products.stockSummary
+        stockSummary: products.stock_summary
       }));
       setLoadedSlices(prev => ({ ...prev, products: true }));
     } catch (err: any) {
@@ -482,19 +562,27 @@ export function useAppData() {
     setError(null);
 
     try {
-      const [products, purchaseBatches] = await Promise.all([
-        fetchProducts(),
-        fetchPurchaseBatches()
+      const shouldLoadProducts = force || !loadedSlices.products;
+      const [products, purchasePage] = await Promise.all([
+        shouldLoadProducts ? fetchProducts(force) : Promise.resolve(null),
+        fetchPurchasePage(0)
       ]);
       setData(prev => ({
         ...prev,
-        brands: products.brands,
-        models: products.models,
-        variants: products.variants,
-        purchaseBatches,
+        ...(products
+          ? {
+              brands: products.brands,
+              models: products.models,
+              variants: products.variants,
+              stockItems: [],
+              stockSummary: products.stock_summary
+            }
+          : {}),
+        purchaseBatches: purchasePage.purchase_batches,
         stockItems: [],
-        stockSummary: products.stockSummary
+        stockSummary: products?.stock_summary ?? prev.stockSummary
       }));
+      setPurchaseTotalCount(purchasePage.total_count);
       setLoadedSlices(prev => ({ ...prev, products: true, purchase: true }));
     } catch (err: any) {
       const message = err?.message || 'โหลดข้อมูลรับเข้าคลังไม่สำเร็จ';
@@ -503,44 +591,120 @@ export function useAppData() {
     } finally {
       setSliceLoading('purchase', false);
     }
-  }, [fetchProducts, fetchPurchaseBatches, loadedSlices.purchase, setSliceLoading]);
+  }, [fetchProducts, fetchPurchasePage, loadedSlices.products, loadedSlices.purchase, setSliceLoading]);
 
-  const ensureOrdersLoaded = useCallback(async (force = false) => {
-    if (!force && loadedSlices.orders) return;
+  const loadMorePurchaseBatches = useCallback(async () => {
+    if (loadingSlices.purchase || data.purchaseBatches.length >= purchaseTotalCount) return;
+    setSliceLoading('purchase', true);
+    setError(null);
+
+    try {
+      const page = await fetchPurchasePage(data.purchaseBatches.length);
+      setData(prev => ({
+        ...prev,
+        purchaseBatches: mergeUniqueById(prev.purchaseBatches, page.purchase_batches)
+      }));
+      setPurchaseTotalCount(page.total_count);
+      setLoadedSlices(prev => ({ ...prev, purchase: true }));
+    } catch (err: any) {
+      const message = err?.message || 'โหลดประวัติรับเข้าเพิ่มเติมไม่สำเร็จ';
+      setError(message);
+      console.error(message, err);
+    } finally {
+      setSliceLoading('purchase', false);
+    }
+  }, [data.purchaseBatches.length, fetchPurchasePage, loadingSlices.purchase, purchaseTotalCount, setSliceLoading]);
+
+  const loadOrdersPage = useCallback(async (
+    filters: OrderPageFilters,
+    offset = 0,
+    mode: 'replace' | 'append' = 'replace',
+    refreshProducts = false
+  ) => {
+    const requestSeq = ++ordersRequestSeqRef.current;
     setSliceLoading('orders', true);
     setError(null);
 
     try {
-      const [products, customers, ordersAndDeliveries] = await Promise.all([
-        fetchProducts(),
-        fetchCustomers(),
-        fetchOrdersAndDeliveries()
+      const shouldLoadProducts = refreshProducts || !loadedSlices.products;
+      const shouldLoadCustomers = !customersLoadedRef.current;
+      const [products, customers, ordersPage] = await Promise.all([
+        shouldLoadProducts ? fetchProducts(refreshProducts) : Promise.resolve(null),
+        shouldLoadCustomers ? fetchCustomers() : Promise.resolve(null),
+        fetchOrdersPage(filters, offset)
       ]);
+
+      if (requestSeq !== ordersRequestSeqRef.current) return;
+      if (customers) customersLoadedRef.current = true;
+
       setData(prev => ({
         ...prev,
-        brands: products.brands,
-        models: products.models,
-        variants: products.variants,
-        stockItems: [],
-        stockSummary: products.stockSummary,
-        customers,
-        orders: ordersAndDeliveries.orders,
-        deliveries: ordersAndDeliveries.deliveries
+        ...(products
+          ? {
+              brands: products.brands,
+              models: products.models,
+              variants: products.variants,
+              stockItems: [],
+              stockSummary: products.stock_summary
+            }
+          : {}),
+        ...(customers ? { customers } : {}),
+        orders: mode === 'append'
+          ? mergeUniqueById(prev.orders, ordersPage.orders)
+          : ordersPage.orders,
+        deliveries: mode === 'append'
+          ? mergeUniqueById(prev.deliveries, ordersPage.deliveries)
+          : ordersPage.deliveries
       }));
+      setOrdersTotalCount(ordersPage.total_count);
       setLoadedSlices(prev => ({
         ...prev,
         products: true,
         orders: true,
         deliveries: true
       }));
+    } finally {
+      if (requestSeq === ordersRequestSeqRef.current) {
+        setSliceLoading('orders', false);
+      }
+    }
+  }, [fetchCustomers, fetchOrdersPage, fetchProducts, loadedSlices.products, setSliceLoading]);
+
+  const ensureOrdersLoaded = useCallback(async (force = false) => {
+    if (!force && loadedSlices.orders) return;
+
+    try {
+      await loadOrdersPage(orderFilters, 0, 'replace', force);
     } catch (err: any) {
       const message = err?.message || 'โหลดข้อมูลออเดอร์ไม่สำเร็จ';
       setError(message);
       console.error(message, err);
-    } finally {
-      setSliceLoading('orders', false);
     }
-  }, [fetchCustomers, fetchOrdersAndDeliveries, fetchProducts, loadedSlices.orders, setSliceLoading]);
+  }, [loadOrdersPage, loadedSlices.orders, orderFilters]);
+
+  const loadMoreOrders = useCallback(async () => {
+    if (loadingSlices.orders || data.orders.length >= ordersTotalCount) return;
+
+    try {
+      await loadOrdersPage(orderFilters, data.orders.length, 'append');
+    } catch (err: any) {
+      const message = err?.message || 'โหลดออเดอร์เพิ่มเติมไม่สำเร็จ';
+      setError(message);
+      console.error(message, err);
+    }
+  }, [data.orders.length, loadOrdersPage, loadingSlices.orders, orderFilters, ordersTotalCount]);
+
+  const setOrderFilters = useCallback((nextFilters: OrderPageFilters) => {
+    const normalizedFilters: OrderPageFilters = {
+      status: nextFilters.status,
+      search: nextFilters.search.trim()
+    };
+    setOrderFiltersState(normalizedFilters);
+
+    if (loadedSlices.orders) {
+      void loadOrdersPage(normalizedFilters, 0, 'replace');
+    }
+  }, [loadOrdersPage, loadedSlices.orders]);
 
   const ensureDeliveriesLoaded = useCallback(async (force = false) => {
     if (!force && loadedSlices.deliveries) return;
@@ -549,7 +713,7 @@ export function useAppData() {
 
     try {
       const [products, customers, ordersAndDeliveries] = await Promise.all([
-        fetchProducts(),
+        fetchProducts(force),
         fetchCustomers(),
         fetchOrdersAndDeliveries()
       ]);
@@ -559,11 +723,12 @@ export function useAppData() {
         models: products.models,
         variants: products.variants,
         stockItems: [],
-        stockSummary: products.stockSummary,
+        stockSummary: products.stock_summary,
         customers,
         orders: ordersAndDeliveries.orders,
         deliveries: ordersAndDeliveries.deliveries
       }));
+      customersLoadedRef.current = true;
       setLoadedSlices(prev => ({
         ...prev,
         products: true,
@@ -777,19 +942,21 @@ export function useAppData() {
     });
     assertNoError(rpcError);
 
-    const [variants, purchaseBatches, stockSummary] = await Promise.all([
-      fetchVariants(),
-      fetchPurchaseBatches(),
-      fetchStockSummary()
+    const [products, purchasePage] = await Promise.all([
+      fetchProducts(true),
+      fetchPurchasePage(0),
+      loadDashboard()
     ]);
     setData(prev => ({
       ...prev,
-      variants,
-      purchaseBatches,
+      brands: products.brands,
+      models: products.models,
+      variants: products.variants,
+      purchaseBatches: purchasePage.purchase_batches,
       stockItems: [],
-      stockSummary
+      stockSummary: products.stock_summary
     }));
-    await loadDashboard();
+    setPurchaseTotalCount(purchasePage.total_count);
     setLoadedSlices(prev => ({ ...prev, products: true, purchase: true }));
     return batchId as string | null;
   };
@@ -812,6 +979,7 @@ export function useAppData() {
       ...prev,
       customers: [...prev.customers, nextCustomer].sort((a, b) => a.name.localeCompare(b.name))
     }));
+    customersLoadedRef.current = true;
     return nextCustomer;
   };
 
@@ -828,6 +996,7 @@ export function useAppData() {
         .eq('id', id)
         .then(({ error }) => assertNoError(error)),
       async () => {
+        customersLoadedRef.current = false;
         await ensureOrdersLoaded(true);
       }
     );
@@ -850,20 +1019,22 @@ export function useAppData() {
     });
     assertNoError(rpcError);
 
-    const [variants, ordersAndDeliveries, stockSummary] = await Promise.all([
-      fetchVariants(),
-      fetchOrdersAndDeliveries(),
-      fetchStockSummary()
+    const [products, ordersPage] = await Promise.all([
+      fetchProducts(true),
+      fetchOrdersPage(orderFilters, 0),
+      loadDashboard()
     ]);
     setData(prev => ({
       ...prev,
-      variants,
-      orders: ordersAndDeliveries.orders,
-      deliveries: ordersAndDeliveries.deliveries,
+      brands: products.brands,
+      models: products.models,
+      variants: products.variants,
+      orders: ordersPage.orders,
+      deliveries: ordersPage.deliveries,
       stockItems: [],
-      stockSummary
+      stockSummary: products.stock_summary
     }));
-    await loadDashboard();
+    setOrdersTotalCount(ordersPage.total_count);
     setLoadedSlices(prev => ({
       ...prev,
       products: true,
@@ -880,7 +1051,7 @@ export function useAppData() {
         p_status: status
       }).then(({ error }) => assertNoError(error)),
       async () => {
-        await Promise.all([loadDashboard(), ensureOrdersLoaded(true)]);
+        await Promise.all([loadDashboard(), loadOrdersPage(orderFilters, 0, 'replace')]);
       }
     );
   };
@@ -901,7 +1072,7 @@ export function useAppData() {
         p_updates: updates
       }).then(({ error }) => assertNoError(error)),
       async () => {
-        await Promise.all([loadDashboard(), ensureDeliveriesLoaded(true)]);
+        await Promise.all([loadDashboard(), loadOrdersPage(orderFilters, 0, 'replace')]);
       }
     );
   };
@@ -916,6 +1087,9 @@ export function useAppData() {
       assertNoError(rpcError);
       setData(EMPTY_DATA);
       setLoadedSlices(EMPTY_SLICE_STATE);
+      setOrdersTotalCount(0);
+      setPurchaseTotalCount(0);
+      customersLoadedRef.current = false;
       await loadDashboard();
       return { success: true };
     } catch (e: any) {
@@ -940,6 +1114,9 @@ export function useAppData() {
       async () => {
         setData(EMPTY_DATA);
         setLoadedSlices(EMPTY_SLICE_STATE);
+        setOrdersTotalCount(0);
+        setPurchaseTotalCount(0);
+        customersLoadedRef.current = false;
         await loadDashboard();
       }
     );
@@ -952,6 +1129,12 @@ export function useAppData() {
     loadingDashboard,
     loadingSlices,
     loadedSlices,
+    orderFilters,
+    ordersTotalCount,
+    ordersHasMore: data.orders.length < ordersTotalCount,
+    purchaseTotalCount,
+    purchaseHasMore: data.purchaseBatches.length < purchaseTotalCount,
+    pageSize: DEFAULT_PAGE_SIZE,
     error,
     refresh: loadDashboard,
     loadDashboard,
@@ -960,6 +1143,9 @@ export function useAppData() {
     ensureOrdersLoaded,
     ensureDeliveriesLoaded,
     ensureReportsLoaded,
+    loadMoreOrders,
+    loadMorePurchaseBatches,
+    setOrderFilters,
     addBrand,
     updateBrand,
     archiveBrand,

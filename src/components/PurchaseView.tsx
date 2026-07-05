@@ -9,7 +9,6 @@ import {
   Variant,
   PurchaseBatch
 } from '../types';
-import { getVariantStockQty } from '../lib/finance';
 import {
   Plus,
   Trash2,
@@ -34,6 +33,10 @@ interface PurchaseViewProps {
     items: { variant_id: string; qty: number; unit_price: number }[],
     note?: string
   ) => Promise<string | null>;
+  loadMorePurchaseBatches: () => Promise<void>;
+  purchaseHasMore: boolean;
+  purchaseTotalCount: number;
+  loadingPurchase: boolean;
 }
 
 interface NewBatchItem {
@@ -42,17 +45,58 @@ interface NewBatchItem {
   unit_price: number;
 }
 
-export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBatch }) => {
-  const activeBrands = data.brands.filter((brand) => brand.is_active !== false);
-  const activeModels = data.models.filter((model) => {
-    const brand = data.brands.find((item) => item.id === model.brand_id);
-    return model.is_active !== false && brand?.is_active !== false;
-  });
-  const activeVariants = data.variants.filter((variant) => {
-    const model = data.models.find((item) => item.id === variant.model_id);
-    const brand = model ? data.brands.find((item) => item.id === model.brand_id) : null;
-    return variant.is_active !== false && model?.is_active !== false && brand?.is_active !== false;
-  });
+export const PurchaseView: React.FC<PurchaseViewProps> = ({
+  data,
+  addPurchaseBatch,
+  loadMorePurchaseBatches,
+  purchaseHasMore,
+  purchaseTotalCount,
+  loadingPurchase
+}) => {
+  const brandById = React.useMemo(() => new Map(data.brands.map((brand) => [brand.id, brand])), [data.brands]);
+  const modelById = React.useMemo(() => new Map(data.models.map((model) => [model.id, model])), [data.models]);
+  const variantById = React.useMemo(() => new Map(data.variants.map((variant) => [variant.id, variant])), [data.variants]);
+  const stockQtyByVariantId = React.useMemo(
+    () => new Map(data.stockSummary.map((item) => [item.variant_id, item.in_stock_qty])),
+    [data.stockSummary]
+  );
+  const activeBrands = React.useMemo(
+    () => data.brands.filter((brand) => brand.is_active !== false),
+    [data.brands]
+  );
+  const activeModels = React.useMemo(
+    () => data.models.filter((model) => {
+      const brand = brandById.get(model.brand_id);
+      return model.is_active !== false && brand?.is_active !== false;
+    }),
+    [brandById, data.models]
+  );
+  const activeVariants = React.useMemo(
+    () => data.variants.filter((variant) => {
+      const model = modelById.get(variant.model_id);
+      const brand = model ? brandById.get(model.brand_id) : null;
+      return variant.is_active !== false && model?.is_active !== false && brand?.is_active !== false;
+    }),
+    [brandById, data.variants, modelById]
+  );
+  const activeModelsByBrand = React.useMemo(() => {
+    const grouped = new Map<string, typeof activeModels>();
+    activeModels.forEach((model) => {
+      const list = grouped.get(model.brand_id) || [];
+      list.push(model);
+      grouped.set(model.brand_id, list);
+    });
+    return grouped;
+  }, [activeModels]);
+  const activeVariantsByModel = React.useMemo(() => {
+    const grouped = new Map<string, typeof activeVariants>();
+    activeVariants.forEach((variant) => {
+      const list = grouped.get(variant.model_id) || [];
+      list.push(variant);
+      grouped.set(variant.model_id, list);
+    });
+    return grouped;
+  }, [activeVariants]);
   const [isAdding, setIsAdding] = useState(false);
   const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null);
 
@@ -256,43 +300,43 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
 
                 {/* Items rows */}
                 <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-                  {items.map((item, idx) => {
-                    const selectedVariant = data.variants.find(v => v.id === item.variant_id);
-                    // Determine cost + overhead
-                    const cost_ใหม่_ตัว = item.unit_price + actualOverheadPerUnit;
-                    const preWac = selectedVariant?.current_wac || 0;
+	                  {items.map((item, idx) => {
+	                    const selectedVariant = variantById.get(item.variant_id);
+	                    // Determine cost + overhead
+	                    const cost_ใหม่_ตัว = item.unit_price + actualOverheadPerUnit;
+	                    const preWac = selectedVariant?.current_wac || 0;
 
-                    // Forecast new WAC
-                    const qty_เดิม_ตัว = getVariantStockQty(data.stockSummary, item.variant_id);
-                    const estNewWac = (qty_เดิม_ตัว + item.qty > 0)
-                      ? (qty_เดิม_ตัว * preWac + item.qty * cost_ใหม่_ตัว) / (qty_เดิม_ตัว + item.qty)
-                      : cost_ใหม่_ตัว;
+	                    // Forecast new WAC
+	                    const qty_เดิม_ตัว = stockQtyByVariantId.get(item.variant_id) || 0;
+	                    const estNewWac = (qty_เดิม_ตัว + item.qty > 0)
+	                      ? (qty_เดิม_ตัว * preWac + item.qty * cost_ใหม่_ตัว) / (qty_เดิม_ตัว + item.qty)
+	                      : cost_ใหม่_ตัว;
 
-                    // Resolve hierarchy
-                    const currentModel = selectedVariant ? data.models.find(m => m.id === selectedVariant.model_id) : null;
-                    const currentBrand = currentModel ? data.brands.find(b => b.id === currentModel.brand_id) : null;
+	                    // Resolve hierarchy
+	                    const currentModel = selectedVariant ? modelById.get(selectedVariant.model_id) : null;
+	                    const currentBrand = currentModel ? brandById.get(currentModel.brand_id) : null;
 
                     const activeBrandId = currentBrand?.id || '';
                     const activeModelId = currentModel?.id || '';
                     const activeVariantId = item.variant_id || '';
-                    const currentImage = selectedVariant?.image || currentModel?.image || '';
+	                    const currentImage = selectedVariant?.image || currentModel?.image || '';
 
-                    // Filter cascading levels
-                    const modelsForBrand = activeModels.filter(m => m.brand_id === activeBrandId);
-                    const variantsForModel = activeVariants.filter(v => v.model_id === activeModelId);
+	                    // Filter cascading levels
+	                    const modelsForBrand = activeModelsByBrand.get(activeBrandId) || [];
+	                    const variantsForModel = activeVariantsByModel.get(activeModelId) || [];
 
-                    // Re-routing changers
-                    const handleBrandChange = (bId: string) => {
-                      const brandModels = activeModels.filter(m => m.brand_id === bId);
-                      const matchedModel = brandModels[0];
-                      const modelVariants = matchedModel ? activeVariants.filter(v => v.model_id === matchedModel.id) : [];
-                      const nextVariantId = modelVariants[0]?.id || '';
-                      handleUpdateItemRow(idx, 'variant_id', nextVariantId);
-                    };
+	                    // Re-routing changers
+	                    const handleBrandChange = (bId: string) => {
+	                      const brandModels = activeModelsByBrand.get(bId) || [];
+	                      const matchedModel = brandModels[0];
+	                      const modelVariants = matchedModel ? activeVariantsByModel.get(matchedModel.id) || [] : [];
+	                      const nextVariantId = modelVariants[0]?.id || '';
+	                      handleUpdateItemRow(idx, 'variant_id', nextVariantId);
+	                    };
 
-                    const handleModelChange = (mId: string) => {
-                      const modelVariants = activeVariants.filter(v => v.model_id === mId);
-                      const nextVariantId = modelVariants[0]?.id || '';
+	                    const handleModelChange = (mId: string) => {
+	                      const modelVariants = activeVariantsByModel.get(mId) || [];
+	                      const nextVariantId = modelVariants[0]?.id || '';
                       handleUpdateItemRow(idx, 'variant_id', nextVariantId);
                     };
 
@@ -487,8 +531,8 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
             </div>
           </div>
 
-          <div className="space-y-3">
-            {data.purchaseBatches.length > 0 ? (
+	          <div className="space-y-3">
+	            {data.purchaseBatches.length > 0 ? (
               data.purchaseBatches.map(batch => {
                 const totalBatchQty = batch.items.reduce((sum, i) => sum + i.qty, 0);
                 const itemsSum = batch.items.reduce((sum, i) => sum + (i.qty * i.unit_price), 0);
@@ -578,12 +622,12 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
                                   <th className="py-2 px-3 text-right font-bold text-emerald-800">ต้นทุนสะสมรวมค่าส่ง</th>
                                 </tr>
                               </thead>
-                              <tbody>
-                                {batch.items.map((item, idx) => {
-                                  const variant = data.variants.find(v => v.id === item.variant_id);
-                                  const model = variant ? data.models.find(m => m.id === variant.model_id) : null;
-                                  const brand = model ? data.brands.find(b => b.id === model.brand_id) : null;
-                                  const itemImage = variant?.image || model?.image || '';
+	                              <tbody>
+	                                {batch.items.map((item, idx) => {
+	                                  const variant = variantById.get(item.variant_id);
+	                                  const model = variant ? modelById.get(variant.model_id) : null;
+	                                  const brand = model ? brandById.get(model.brand_id) : null;
+	                                  const itemImage = variant?.image || model?.image || '';
 
                                   const overheadCalculated = (batch.shipping_cost + batch.other_cost) / totalBatchQty;
                                   const cost_loaded = item.unit_price + overheadCalculated;
@@ -630,11 +674,11 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
 
                           {/* Mobile View Card List */}
                           <div className="block md:hidden space-y-2">
-                            {batch.items.map((item, idx) => {
-                              const variant = data.variants.find(v => v.id === item.variant_id);
-                              const model = variant ? data.models.find(m => m.id === variant.model_id) : null;
-                              const brand = model ? data.brands.find(b => b.id === model.brand_id) : null;
-                              const itemImage = variant?.image || model?.image || '';
+	                            {batch.items.map((item, idx) => {
+	                              const variant = variantById.get(item.variant_id);
+	                              const model = variant ? modelById.get(variant.model_id) : null;
+	                              const brand = model ? brandById.get(model.brand_id) : null;
+	                              const itemImage = variant?.image || model?.image || '';
 
                               const overheadCalculated = (batch.shipping_cost + batch.other_cost) / totalBatchQty;
                               const cost_loaded = item.unit_price + overheadCalculated;
@@ -697,11 +741,27 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({ data, addPurchaseBat
             ) : (
               <div className="bg-white p-12 text-center text-slate-400 border border-slate-150 rounded-2xl">
                 ไม่เคยมีประวัติการรับเข้าสินค้าใดๆ
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+	              </div>
+	            )}
+	          </div>
+
+	          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-slate-500 bg-white border border-slate-100 rounded-2xl p-4">
+	            <span>
+	              แสดง {data.purchaseBatches.length.toLocaleString('th-TH')} จาก {purchaseTotalCount.toLocaleString('th-TH')} ล็อตรับเข้า
+	            </span>
+	            {purchaseHasMore && (
+	              <button
+	                type="button"
+	                onClick={() => loadMorePurchaseBatches()}
+	                disabled={loadingPurchase}
+	                className="self-start sm:self-auto px-4 py-2 rounded-xl bg-slate-900 text-white font-bold disabled:bg-slate-300"
+	              >
+	                {loadingPurchase ? 'กำลังโหลด...' : 'โหลดประวัติรับเข้าเพิ่มเติม'}
+	              </button>
+	            )}
+	          </div>
+	        </div>
+	      )}
 
       {/* --- IMAGE LIGHTBOX MODAL --- */}
       {previewImage && (
