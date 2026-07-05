@@ -47,7 +47,10 @@ const makeBatch = (overrides: Partial<PurchaseBatch> = {}): PurchaseBatch => ({
     {
       variant_id: 'variant-1',
       qty: 2,
-      unit_price: 700
+      unit_price: 700,
+      brand_name_snapshot: 'Brand',
+      model_name_snapshot: 'Model',
+      variant_color_snapshot: 'Khaki'
     }
   ],
   ...overrides

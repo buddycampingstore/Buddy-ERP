@@ -37,6 +37,9 @@ interface PurchaseViewProps {
   purchaseHasMore: boolean;
   purchaseTotalCount: number;
   loadingPurchase: boolean;
+  ensureProductsLoaded: () => Promise<void>;
+  productsLoaded: boolean;
+  loadingProducts: boolean;
 }
 
 interface NewBatchItem {
@@ -51,7 +54,10 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
   loadMorePurchaseBatches,
   purchaseHasMore,
   purchaseTotalCount,
-  loadingPurchase
+  loadingPurchase,
+  ensureProductsLoaded,
+  productsLoaded,
+  loadingProducts
 }) => {
   const brandById = React.useMemo(() => new Map(data.brands.map((brand) => [brand.id, brand])), [data.brands]);
   const modelById = React.useMemo(() => new Map(data.models.map((model) => [model.id, model])), [data.models]);
@@ -98,6 +104,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
     return grouped;
   }, [activeVariants]);
   const [isAdding, setIsAdding] = useState(false);
+  const [openingForm, setOpeningForm] = useState(false);
   const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null);
 
   // --- IMAGE LIGHTBOX STATE ---
@@ -168,6 +175,23 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
     }
   };
 
+  const handleStartAdding = async () => {
+    if (productsLoaded && activeVariants.length === 0) {
+      alert('กรุณาเพิ่มรายละเอียดสินค้าสี/รุ่นอย่างน้อย 1 รายการในหน้า "สินค้า" ก่อนบันทึกรับเข้า');
+      return;
+    }
+
+    try {
+      setOpeningForm(true);
+      if (!productsLoaded) {
+        await ensureProductsLoaded();
+      }
+      setIsAdding(true);
+    } finally {
+      setOpeningForm(false);
+    }
+  };
+
   // --- CALCULATIONS FOR PREVIEW ---
   const totalQty_ใหม่ = items.reduce((sum, i) => sum + i.qty, 0);
   const totalItemCost_ใหม่ = items.reduce((sum, i) => sum + (i.qty * i.unit_price), 0);
@@ -187,17 +211,12 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
         <div className="mt-2 md:mt-0">
           {!isAdding ? (
             <button
-              onClick={() => {
-                if (activeVariants.length === 0) {
-                  alert('กรุณาเพิ่มรายละเอียดสินค้าสี/รุ่นอย่างน้อย 1 รายการในหน้า "สินค้า" ก่อนบันทึกรับเข้า');
-                  return;
-                }
-                setIsAdding(true);
-              }}
+              onClick={() => void handleStartAdding()}
+              disabled={openingForm || loadingProducts}
               className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold py-2.5 px-4 rounded-xl flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
               id="start-purchase-btn"
             >
-              <Plus className="w-4.5 h-4.5" /> บันทึกรับสินค้าล็อตใหม่
+              <Plus className="w-4.5 h-4.5" /> {openingForm || loadingProducts ? 'กำลังเตรียมข้อมูลสินค้า...' : 'บันทึกรับสินค้าล็อตใหม่'}
             </button>
           ) : (
             <button
@@ -628,6 +647,9 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
 	                                  const model = variant ? modelById.get(variant.model_id) : null;
 	                                  const brand = model ? brandById.get(model.brand_id) : null;
 	                                  const itemImage = variant?.image || model?.image || '';
+                                  const displayBrandName = brand?.name || item.brand_name_snapshot || 'อิสระ';
+                                  const displayModelName = model?.name || item.model_name_snapshot || 'สินค้าเดิม';
+                                  const displayVariantColor = variant?.color || item.variant_color_snapshot || 'ไม่ทราบสี';
 
                                   const overheadCalculated = (batch.shipping_cost + batch.other_cost) / totalBatchQty;
                                   const cost_loaded = item.unit_price + overheadCalculated;
@@ -643,7 +665,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
                                             title="คลิกเพื่อขยายดูรูปภาพ"
                                             onClick={() => {
                                               setPreviewImage(itemImage);
-                                              setPreviewTitle(`${brand?.name || 'เก้าอี้'} ${model.name}`);
+                                              setPreviewTitle(`${displayBrandName} ${displayModelName}`);
                                             }}
                                           />
                                         ) : (
@@ -652,8 +674,8 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
                                           </div>
                                         )}
                                         <div className="min-w-0">
-                                          <span className="text-slate-400 text-[10px] font-mono mr-1.5 uppercase bg-slate-100 px-1 rounded">{brand?.name || 'อิสระ'}</span>
-                                          <strong>{model?.name || 'ไม่ทราบรุ่น'}</strong> - <span>{variant?.color || 'ไม่ทราบสี'}</span>
+                                          <span className="text-slate-400 text-[10px] font-mono mr-1.5 uppercase bg-slate-100 px-1 rounded">{displayBrandName}</span>
+                                          <strong>{displayModelName}</strong> - <span>{displayVariantColor}</span>
                                         </div>
                                       </td>
                                       <td className="py-2.5 px-3 text-center font-mono font-semibold text-slate-800">
@@ -679,6 +701,9 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
 	                              const model = variant ? modelById.get(variant.model_id) : null;
 	                              const brand = model ? brandById.get(model.brand_id) : null;
 	                              const itemImage = variant?.image || model?.image || '';
+                              const displayBrandName = brand?.name || item.brand_name_snapshot || 'อิสระ';
+                              const displayModelName = model?.name || item.model_name_snapshot || 'สินค้าเดิม';
+                              const displayVariantColor = variant?.color || item.variant_color_snapshot || 'ไม่ทราบสี';
 
                               const overheadCalculated = (batch.shipping_cost + batch.other_cost) / totalBatchQty;
                               const cost_loaded = item.unit_price + overheadCalculated;
@@ -698,7 +723,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
                                         title="คลิกเพื่อขยายดูรูปภาพ"
                                         onClick={() => {
                                           setPreviewImage(itemImage);
-                                          setPreviewTitle(`${brand?.name || 'เก้าอี้'} ${model.name}`);
+                                          setPreviewTitle(`${displayBrandName} ${displayModelName}`);
                                         }}
                                       />
                                     ) : (
@@ -708,11 +733,11 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
                                     )}
                                     <div className="min-w-0 space-y-0.5">
                                       <div className="flex items-center gap-1.5 flex-wrap">
-                                        <span className="text-[9px] font-mono font-semibold uppercase bg-slate-100 text-slate-600 px-1 rounded">{brand?.name || 'อิสระ'}</span>
-                                        <strong className="text-slate-800 text-[11px] truncate">{model?.name || 'ไม่ทราบรุ่น'}</strong>
+                                        <span className="text-[9px] font-mono font-semibold uppercase bg-slate-100 text-slate-600 px-1 rounded">{displayBrandName}</span>
+                                        <strong className="text-slate-800 text-[11px] truncate">{displayModelName}</strong>
                                       </div>
                                       <div className="text-[10px] text-slate-500">
-                                        สี: <span className="font-semibold text-slate-700">{variant?.color || 'ไม่ทราบสี'}</span>
+                                        สี: <span className="font-semibold text-slate-700">{displayVariantColor}</span>
                                       </div>
                                     </div>
                                   </div>

@@ -35,6 +35,9 @@ export interface PurchaseBatchItem {
   variant_id: string;
   qty: number;
   unit_price: number;
+  brand_name_snapshot: string;
+  model_name_snapshot: string;
+  variant_color_snapshot: string;
 }
 
 export interface PurchaseBatch {
@@ -105,7 +108,7 @@ export interface ProductsPayload {
   brands: Brand[];
   models: Model[];
   variants: Variant[];
-  stock_summary: StockSummary[];
+  stock_summary?: StockSummary[];
 }
 
 export interface Customer {

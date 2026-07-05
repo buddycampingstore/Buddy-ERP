@@ -57,6 +57,9 @@ interface OrdersViewProps {
   ordersHasMore: boolean;
   ordersTotalCount: number;
   loadingOrders: boolean;
+  ensureProductsLoaded: () => Promise<void>;
+  productsLoaded: boolean;
+  loadingProducts: boolean;
 }
 
 interface NewOrderItem {
@@ -79,7 +82,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   loadMoreOrders,
   ordersHasMore,
   ordersTotalCount,
-  loadingOrders
+  loadingOrders,
+  ensureProductsLoaded,
+  productsLoaded,
+  loadingProducts
 }) => {
   void updateCustomer;
 
@@ -131,6 +137,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   }, [activeVariants]);
 
   const [isAdding, setIsAdding] = useState(false);
+  const [openingForm, setOpeningForm] = useState(false);
   const [searchDraft, setSearchDraft] = useState(orderFilters.search);
   const [editingDeliveryOrderId, setEditingDeliveryOrderId] = useState<string | null>(null);
   const [trackingNo, setTrackingNo] = useState('');
@@ -309,6 +316,23 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     }
   };
 
+  const handleStartAdding = async () => {
+    if (productsLoaded && activeVariants.length === 0) {
+      alert('กรุณาเพิ่มรายละเอียดสินค้าสี/รุ่นอย่างน้อย 1 รายการในหน้า "สินค้า" ก่อนเปิดบิลขาย');
+      return;
+    }
+
+    try {
+      setOpeningForm(true);
+      if (!productsLoaded) {
+        await ensureProductsLoaded();
+      }
+      setIsAdding(true);
+    } finally {
+      setOpeningForm(false);
+    }
+  };
+
   // --- REAL-TIME CALCULATIONS ---
   const calculatedItems = items.map(item => {
     const variant = variantById.get(item.variant_id);
@@ -366,11 +390,12 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         <div className="mt-2 md:mt-0">
           {!isAdding ? (
             <button
-              onClick={() => setIsAdding(true)}
+              onClick={() => void handleStartAdding()}
+              disabled={openingForm || loadingProducts}
               className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold py-2.5 px-4 rounded-xl flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
               id="start-order-btn"
             >
-              <Plus className="w-4.5 h-4.5" /> เปิดบิลขายเก้าอี้ใหม่ (Fulfill)
+              <Plus className="w-4.5 h-4.5" /> {openingForm || loadingProducts ? 'กำลังเตรียมข้อมูลสินค้า...' : 'เปิดบิลขายเก้าอี้ใหม่ (Fulfill)'}
             </button>
           ) : (
             <button

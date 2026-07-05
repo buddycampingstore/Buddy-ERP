@@ -158,6 +158,9 @@ export default function App() {
             purchaseHasMore={purchaseHasMore}
             purchaseTotalCount={purchaseTotalCount}
             loadingPurchase={loadingSlices.purchase}
+            ensureProductsLoaded={ensureProductsLoaded}
+            productsLoaded={loadedSlices.products}
+            loadingProducts={loadingSlices.products}
           />
         );
       case 'orders':
@@ -177,6 +180,9 @@ export default function App() {
             ordersHasMore={ordersHasMore}
             ordersTotalCount={ordersTotalCount}
             loadingOrders={loadingSlices.orders}
+            ensureProductsLoaded={ensureProductsLoaded}
+            productsLoaded={loadedSlices.products}
+            loadingProducts={loadingSlices.products}
           />
         );
       default:

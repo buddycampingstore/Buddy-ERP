@@ -3,12 +3,13 @@ import {
   mapOrdersPagePayload,
   mapProductsPayload,
   mapPurchasePagePayload,
+  normalizeProductsPayload,
   mergeUniqueById
 } from './useAppData';
 
 describe('useAppData payload mappers', () => {
   it('maps the products RPC payload into app slices', () => {
-    const payload = mapProductsPayload({
+    const payload = normalizeProductsPayload({
       brands: [{ id: 'brand-1', name: 'Buddy', is_active: true }],
       models: [{ id: 'model-1', brand_id: 'brand-1', name: 'Camp', image: null, is_active: true }],
       variants: [{
@@ -27,6 +28,28 @@ describe('useAppData payload mappers', () => {
     expect(payload.variants[0].qty_in_stock).toBe(3);
     expect(payload.variants[0].current_wac).toBe(1200.5);
     expect(payload.stock_summary[0].in_stock_value).toBe(3601.5);
+  });
+
+  it('derives stock summary when the products RPC omits it', () => {
+    const rawPayload = {
+      brands: [],
+      models: [],
+      variants: [{
+        id: 'variant-1',
+        model_id: 'model-1',
+        color: 'Khaki',
+        qty_in_stock: '4',
+        current_wac: '250',
+        standard_sale_price: '900',
+        is_active: true
+      }]
+    };
+    const payload = normalizeProductsPayload(rawPayload);
+
+    expect(mapProductsPayload(rawPayload).stock_summary).toBeUndefined();
+    expect(payload.stock_summary).toEqual([
+      { variant_id: 'variant-1', in_stock_qty: 4, in_stock_value: 1000 }
+    ]);
   });
 
   it('maps an orders page with nested line items', () => {
@@ -75,7 +98,14 @@ describe('useAppData payload mappers', () => {
         shipping_cost: '100',
         other_cost: '50',
         note: 'first',
-        items: [{ variant_id: 'variant-1', qty: '2', unit_price: '700' }]
+        items: [{
+          variant_id: 'variant-1',
+          qty: '2',
+          unit_price: '700',
+          brand_name_snapshot: 'Buddy',
+          model_name_snapshot: 'Camp',
+          variant_color_snapshot: 'Khaki'
+        }]
       }]
     });
 
@@ -86,6 +116,7 @@ describe('useAppData payload mappers', () => {
 
     expect(payload.purchase_batches[0].shipping_cost).toBe(100);
     expect(payload.purchase_batches[0].items[0].qty).toBe(2);
+    expect(payload.purchase_batches[0].items[0].model_name_snapshot).toBe('Camp');
     expect(payload.total_count).toBe(3);
     expect(merged).toEqual([{ id: 'batch-1', date: 'new' }, { id: 'batch-2', date: 'keep' }]);
   });
