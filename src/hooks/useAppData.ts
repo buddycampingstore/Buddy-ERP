@@ -51,10 +51,6 @@ type DbPurchaseBatchItem = {
   variant_color_snapshot: string;
 };
 
-type DbOrderItem = OrderItem & {
-  order_id: string;
-};
-
 type DbStockSummary = {
   variant_id: string;
   in_stock_qty: number;
@@ -254,19 +250,6 @@ const mapOrder = (order: any, items: any[] = []): AppData['orders'][number] => (
   shipping_fee: Number(order.shipping_fee || 0),
   shipping_cost: Number(order.shipping_cost || 0)
 });
-
-const buildOrders = (orders: any[] = [], items: DbOrderItem[] = []) => {
-  const orderItemsByOrder = new Map<string, OrderItem[]>();
-  items.forEach((item) => {
-    const list = orderItemsByOrder.get(item.order_id) || [];
-    list.push(mapOrderItem(item));
-    orderItemsByOrder.set(item.order_id, list);
-  });
-
-  return sortByDateDesc(orders.map((order: any) => mapOrder(order, orderItemsByOrder.get(order.id) || [])));
-};
-
-
 
 export const mergeUniqueById = <T extends { id: string }>(current: T[], incoming: T[]) => {
   const merged = new Map<string, T>();
@@ -605,21 +588,35 @@ export function useAppData() {
   };
 
   const updateBrand = async (id: string, name: string) => {
-    await refreshAfter(
-      supabase.from('brands').update({ name: name.trim() }).eq('id', id).then(({ error }) => assertNoError(error)),
-      async () => {
-        await Promise.all([loadDashboard(), ensureProductsLoaded(true)]);
-      }
-    );
+    const trimmed = name.trim();
+    await supabase.from('brands').update({ name: trimmed }).eq('id', id).then(({ error }) => assertNoError(error));
+    // Patch locally instead of refetching the whole products payload for a
+    // single renamed row. Nothing on the dashboard depends on a brand name.
+    setData(prev => ({
+      ...prev,
+      brands: prev.brands
+        .map(b => (b.id === id ? { ...b, name: trimmed } : b))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    }));
   };
 
   const archiveBrand = async (id: string) => {
-    await refreshAfter(
-      supabase.rpc('archive_brand', { p_brand_id: id }).then(({ error }) => assertNoError(error)),
-      async () => {
-        await Promise.all([loadDashboard(), ensureProductsLoaded(true)]);
-      }
-    );
+    await supabase.rpc('archive_brand', { p_brand_id: id }).then(({ error }) => assertNoError(error));
+    // archive_brand cascades to the brand's models and their variants, so
+    // remove all three locally to mirror the server without a full refetch.
+    setData(prev => {
+      const removedModelIds = new Set(prev.models.filter(m => m.brand_id === id).map(m => m.id));
+      const removedVariantIds = new Set(prev.variants.filter(v => removedModelIds.has(v.model_id)).map(v => v.id));
+      return {
+        ...prev,
+        brands: prev.brands.filter(b => b.id !== id),
+        models: prev.models.filter(m => m.brand_id !== id),
+        variants: prev.variants.filter(v => !removedVariantIds.has(v.id)),
+        stockSummary: prev.stockSummary.filter(s => !removedVariantIds.has(s.variant_id))
+      };
+    });
+    // Archiving can remove in-stock variants, which changes dashboard totals.
+    await loadDashboard();
   };
 
   const addModel = async (brand_id: string, name: string, image?: string) => {
@@ -640,25 +637,34 @@ export function useAppData() {
   };
 
   const updateModel = async (id: string, name: string, brand_id: string, image?: string) => {
-    await refreshAfter(
-      supabase
-        .from('models')
-        .update({ name: name.trim(), brand_id, image: image !== undefined ? image : null })
-        .eq('id', id)
-        .then(({ error }) => assertNoError(error)),
-      async () => {
-        await Promise.all([loadDashboard(), ensureProductsLoaded(true)]);
-      }
-    );
+    const trimmed = name.trim();
+    const nextImage = image !== undefined ? image : null;
+    await supabase
+      .from('models')
+      .update({ name: trimmed, brand_id, image: nextImage })
+      .eq('id', id)
+      .then(({ error }) => assertNoError(error));
+    setData(prev => ({
+      ...prev,
+      models: prev.models
+        .map(m => (m.id === id ? { ...m, name: trimmed, brand_id, image: nextImage || undefined } : m))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    }));
   };
 
   const archiveModel = async (id: string) => {
-    await refreshAfter(
-      supabase.rpc('archive_model', { p_model_id: id }).then(({ error }) => assertNoError(error)),
-      async () => {
-        await Promise.all([loadDashboard(), ensureProductsLoaded(true)]);
-      }
-    );
+    await supabase.rpc('archive_model', { p_model_id: id }).then(({ error }) => assertNoError(error));
+    // archive_model cascades to the model's variants.
+    setData(prev => {
+      const removedVariantIds = new Set(prev.variants.filter(v => v.model_id === id).map(v => v.id));
+      return {
+        ...prev,
+        models: prev.models.filter(m => m.id !== id),
+        variants: prev.variants.filter(v => !removedVariantIds.has(v.id)),
+        stockSummary: prev.stockSummary.filter(s => !removedVariantIds.has(s.variant_id))
+      };
+    });
+    await loadDashboard();
   };
 
   const uploadVariantImage = async (file: File) => {
@@ -710,30 +716,37 @@ export function useAppData() {
   };
 
   const updateVariant = async (id: string, color: string, model_id: string, standard_sale_price?: number, image?: string) => {
-    await refreshAfter(
-      supabase
-        .from('variants')
-        .update({
-          color: color.trim(),
-          model_id,
-          standard_sale_price: standard_sale_price || 0,
-          image: image || null
-        })
-        .eq('id', id)
-        .then(({ error }) => assertNoError(error)),
-      async () => {
-        await Promise.all([loadDashboard(), ensureProductsLoaded(true)]);
-      }
-    );
+    const trimmedColor = color.trim();
+    const nextPrice = standard_sale_price || 0;
+    const nextImage = image || null;
+    await supabase
+      .from('variants')
+      .update({
+        color: trimmedColor,
+        model_id,
+        standard_sale_price: nextPrice,
+        image: nextImage
+      })
+      .eq('id', id)
+      .then(({ error }) => assertNoError(error));
+    setData(prev => ({
+      ...prev,
+      variants: prev.variants
+        .map(v => (v.id === id
+          ? { ...v, color: trimmedColor, model_id, standard_sale_price: nextPrice, image: nextImage || undefined }
+          : v))
+        .sort((a, b) => a.color.localeCompare(b.color))
+    }));
   };
 
   const archiveVariant = async (id: string) => {
-    await refreshAfter(
-      supabase.rpc('archive_variant', { p_variant_id: id }).then(({ error }) => assertNoError(error)),
-      async () => {
-        await Promise.all([loadDashboard(), ensureProductsLoaded(true)]);
-      }
-    );
+    await supabase.rpc('archive_variant', { p_variant_id: id }).then(({ error }) => assertNoError(error));
+    setData(prev => ({
+      ...prev,
+      variants: prev.variants.filter(v => v.id !== id),
+      stockSummary: prev.stockSummary.filter(s => s.variant_id !== id)
+    }));
+    await loadDashboard();
   };
 
   const addPurchaseBatch = async (

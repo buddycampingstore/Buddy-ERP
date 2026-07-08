@@ -93,6 +93,16 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const modelById = React.useMemo(() => new Map(data.models.map((model) => [model.id, model])), [data.models]);
   const variantById = React.useMemo(() => new Map(data.variants.map((variant) => [variant.id, variant])), [data.variants]);
   const deliveryByOrderId = React.useMemo(() => new Map(data.deliveries.map((delivery) => [delivery.order_id, delivery])), [data.deliveries]);
+  // Precompute per-order totals once instead of reducing over order.items on
+  // every render of every card.
+  const orderFinanceById = React.useMemo(
+    () => new Map(data.orders.map((order) => [order.id, {
+      subtotal: getOrderSubtotal(order),
+      revenue: getOrderRevenue(order),
+      profit: getOrderProfit(order)
+    }])),
+    [data.orders]
+  );
   const stockQtyByVariantId = React.useMemo(
     () => new Map(data.stockSummary.map((item) => [item.variant_id, item.in_stock_qty])),
     [data.stockSummary]
@@ -925,9 +935,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 	          <div className="space-y-3" id="orders-grid">
 	            {visibleOrders.length > 0 ? (
 	              visibleOrders.map(order => {
-	                const orderSubTotal = getOrderSubtotal(order);
-	                const orderNetAmount = getOrderRevenue(order);
-	                const totalBatchProfit = getOrderProfit(order);
+	                const finance = orderFinanceById.get(order.id);
+                const orderSubTotal = finance?.subtotal ?? 0;
+	                const orderNetAmount = finance?.revenue ?? 0;
+	                const totalBatchProfit = finance?.profit ?? 0;
 	                const delivery = deliveryByOrderId.get(order.id);
 	                const isEditingDelivery = editingDeliveryOrderId === order.id;
 
