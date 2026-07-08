@@ -328,6 +328,25 @@ export default function App() {
 
       {/* ⚠️ MAIN VIEWPORT CONTENT SCREEN */}
       <main className="flex-1 p-4 md:p-8 overflow-y-auto pb-20 md:pb-8" id="main-content-display">
+        {/* Surface slice-load failures that happen after the dashboard is up —
+            previously these failed silently and tabs just looked empty. */}
+        {error && dashboardSummary && (
+          <div className="max-w-6xl mx-auto mb-4 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl px-4 py-3 flex items-center justify-between gap-3" id="slice-error-banner">
+            <span>โหลดข้อมูลบางส่วนไม่สำเร็จ: {error}</span>
+            <button
+              type="button"
+              onClick={() => {
+                if (activeTab === 'products') void ensureProductsLoaded(true);
+                else if (activeTab === 'purchase') void ensurePurchaseLoaded(true);
+                else if (activeTab === 'orders') void ensureOrdersLoaded(true);
+                else window.location.reload();
+              }}
+              className="shrink-0 bg-white border border-rose-200 hover:bg-rose-100 text-rose-700 px-3 py-1.5 rounded-lg cursor-pointer"
+            >
+              โหลดใหม่
+            </button>
+          </div>
+        )}
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
