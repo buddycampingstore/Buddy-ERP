@@ -103,9 +103,18 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     }
   };
 
+  // Pasting a base64 data URI into the image URL field embeds megabytes of
+  // image data in the DB row and blew the products payload up to ~38 MB
+  // (statement timeouts). Force those through the upload button instead.
+  const isInlineImageData = (value: string) => value.trim().toLowerCase().startsWith('data:');
+
   const handleSaveModel = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!modelName.trim() || !modelBrandId) return;
+    if (modelImage && isInlineImageData(modelImage)) {
+      alert('ห้ามวางรูปแบบ base64 (data:...) ในช่องลิงก์ กรุณาใช้ปุ่ม "อัปโหลด" แทน ไม่งั้นระบบจะช้ามาก');
+      return;
+    }
     setSavingForm('model');
     try {
       if (modelEditId) {
@@ -128,6 +137,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   const handleSaveVariant = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!variantColor.trim() || !variantModelId) return;
+    if (variantImage && isInlineImageData(variantImage)) {
+      alert('ห้ามวางรูปแบบ base64 (data:...) ในช่องลิงก์ กรุณาใช้ปุ่ม "อัปโหลดรูปสีนี้" แทน ไม่งั้นระบบจะช้ามาก');
+      return;
+    }
     const priceNum = variantStandardSalePrice ? parseFloat(variantStandardSalePrice) : 0;
     setSavingForm('variant');
     try {
