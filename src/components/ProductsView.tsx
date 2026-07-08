@@ -205,6 +205,21 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     [brandById, data.variants, modelById]
   );
 
+  // Precompute the model count per brand once so the filter chips don't
+  // re-filter the whole model list for every button on every render.
+  const modelCountByBrand = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    activeModels.forEach(m => counts.set(m.brand_id, (counts.get(m.brand_id) || 0) + 1));
+    return counts;
+  }, [activeModels]);
+
+  // Count active variants per model once for the model-management tab.
+  const variantCountByModel = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    activeVariants.forEach(v => counts.set(v.model_id, (counts.get(v.model_id) || 0) + 1));
+    return counts;
+  }, [activeVariants]);
+
   // --- FILTERED VARIANTS ---
   const filteredVariants = React.useMemo(() => {
     return data.variants.map(v => {
@@ -258,10 +273,13 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       variants: typeof filteredVariants;
     }[] = [];
 
+    // Index groups by modelId so this is O(variants) instead of O(variants²)
+    // — this memo re-runs on every search keystroke.
+    const groupByModelId = new Map<string, (typeof groups)[number]>();
     filteredVariants.forEach(v => {
-      let existingGroup = groups.find(g => g.modelId === v.model_id);
+      let existingGroup = groupByModelId.get(v.model_id);
       if (!existingGroup) {
-        const modelObj = data.models.find(m => m.id === v.model_id);
+        const modelObj = modelById.get(v.model_id);
         existingGroup = {
           modelId: v.model_id,
           modelName: v.modelName,
@@ -270,13 +288,14 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           modelImage: v.image || modelObj?.image,
           variants: []
         };
+        groupByModelId.set(v.model_id, existingGroup);
         groups.push(existingGroup);
       }
       existingGroup.variants.push(v);
     });
 
     return groups;
-  }, [filteredVariants, data.models]);
+  }, [filteredVariants, modelById]);
 
   const groupedBrands = React.useMemo(() => {
     const brandGroups: {
@@ -285,16 +304,18 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       models: typeof groupedModels;
     }[] = [];
 
+    const brandGroupById = new Map<string, (typeof brandGroups)[number]>();
     groupedModels.forEach(modelGroup => {
       const bId = modelGroup.brandId || 'none';
       const bName = modelGroup.brandName || 'ไม่ระบุแบรนด์';
-      let existingBrand = brandGroups.find(bg => bg.brandId === bId);
+      let existingBrand = brandGroupById.get(bId);
       if (!existingBrand) {
         existingBrand = {
           brandId: bId,
           brandName: bName,
           models: []
         };
+        brandGroupById.set(bId, existingBrand);
         brandGroups.push(existingBrand);
       }
       existingBrand.models.push(modelGroup);
@@ -314,16 +335,29 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       models: typeof activeModels;
     }[] = [];
 
+    // Bucket models by brand in a single pass instead of filtering the whole
+    // model list once per brand.
+    const activeBrandIds = new Set(activeBrands.map(b => b.id));
+    const modelsByBrandId = new Map<string, typeof activeModels>();
+    const unbrandedModels: typeof activeModels = [];
+    activeModels.forEach(m => {
+      if (m.brand_id && activeBrandIds.has(m.brand_id)) {
+        const list = modelsByBrandId.get(m.brand_id) || [];
+        list.push(m);
+        modelsByBrandId.set(m.brand_id, list);
+      } else {
+        unbrandedModels.push(m);
+      }
+    });
+
     activeBrands.forEach(brand => {
-      const modelsForBrand = activeModels.filter(m => m.brand_id === brand.id);
       brandGroups.push({
         brandId: brand.id,
         brandName: brand.name,
-        models: modelsForBrand
+        models: modelsByBrandId.get(brand.id) || []
       });
     });
 
-    const unbrandedModels = activeModels.filter(m => !m.brand_id || !activeBrands.some(b => b.id === m.brand_id));
     if (unbrandedModels.length > 0) {
       brandGroups.push({
         brandId: 'unbranded',
@@ -393,6 +427,32 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         </div>
       </div>
 
+      {/* Sub-tab switcher */}
+      <div className="inline-flex bg-slate-100 p-1 rounded-xl gap-1" id="products-subtab-switcher">
+        <button
+          type="button"
+          onClick={() => setSubTab('variants')}
+          className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+            subTab === 'variants'
+              ? 'bg-white text-emerald-700 shadow-xs'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Palette className="w-3.5 h-3.5" /> คลังสี/สินค้า
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab('brands_models')}
+          className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+            subTab === 'brands_models'
+              ? 'bg-white text-emerald-700 shadow-xs'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <BookOpen className="w-3.5 h-3.5" /> โมเดลรุ่นสินค้า
+        </button>
+      </div>
+
       {subTab === 'variants' ? (
         // ================== TAB: VARIANTS ==================
         <div className="space-y-4" id="variants-layout">
@@ -424,7 +484,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                 ทั้งหมด ({activeModels.length} รุ่น)
               </button>
               {activeBrands.map(brand => {
-                const modelCount = activeModels.filter(m => m.brand_id === brand.id).length;
+                const modelCount = modelCountByBrand.get(brand.id) || 0;
                 return (
                   <button
                     key={brand.id}
@@ -643,7 +703,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                                             setVariantColor(v.color);
                                             setVariantModelId(v.model_id);
                                             setVariantStandardSalePrice(v.standard_sale_price ? String(v.standard_sale_price) : '');
-                                            setVariantImage(v.image || group.modelImage || '');
+                                            setVariantImage(v.image || '');
                                             setShowVariantForm(true);
                                           }}
                                           className="p-1 px-2 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-md transition-colors cursor-pointer flex items-center gap-1 text-[11px]"
@@ -803,7 +863,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                 <tbody className="divide-y divide-slate-100">
                   {activeBrands.length > 0 ? (
                     activeBrands.map(brand => {
-                      const counts = activeModels.filter(m => m.brand_id === brand.id).length;
+                      const counts = modelCountByBrand.get(brand.id) || 0;
                       return (
                         <tr key={brand.id} className="hover:bg-slate-50/20">
                           <td className="py-3 px-4 font-semibold text-slate-800">
@@ -851,7 +911,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             <div className="block md:hidden space-y-2.5">
               {activeBrands.length > 0 ? (
                 activeBrands.map(brand => {
-                  const counts = activeModels.filter(m => m.brand_id === brand.id).length;
+                  const counts = modelCountByBrand.get(brand.id) || 0;
                   return (
                     <div key={brand.id} className="bg-white p-4 rounded-2xl border border-slate-100 flex items-center justify-between shadow-xs">
                       <div className="space-y-1">
@@ -944,7 +1004,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                       {hasModels ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           {brandGroup.models.map(model => {
-                            const activeVariantsForModel = activeVariants.filter(v => v.model_id === model.id).length;
+                            const activeVariantsForModel = variantCountByModel.get(model.id) || 0;
                             return (
                               <div 
                                 key={model.id} 
