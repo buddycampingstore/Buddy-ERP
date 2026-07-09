@@ -866,6 +866,50 @@ export function useAppData() {
     return orderId as string;
   };
 
+  const updateOrder = async (orderId: string, orderData: {
+    customer_id?: string | null;
+    customer_name_snapshot?: string;
+    date: string;
+    channel: OrderChannel;
+    status: OrderStatus;
+    delivery_type: DeliveryType;
+    discount: number;
+    items: { variant_id: string; qty: number; sale_price: number; discount: number }[];
+    shipping_fee?: number;
+    shipping_cost?: number;
+  }) => {
+    const { error: rpcError } = await supabase.rpc('update_order', {
+      p_order_id: orderId,
+      p_order: orderData
+    });
+    assertNoError(rpcError);
+
+    // Editing an order re-consumes stock and rewrites WAC/profit snapshots, so
+    // refresh products + orders + dashboard like createOrder does.
+    const [products, ordersPage] = await Promise.all([
+      fetchProducts(true),
+      fetchOrdersPage(orderFilters, 0),
+      loadDashboard()
+    ]);
+    setData(prev => ({
+      ...prev,
+      brands: products.brands,
+      models: products.models,
+      variants: products.variants,
+      orders: ordersPage.orders,
+      deliveries: ordersPage.deliveries,
+      stockItems: [],
+      stockSummary: products.stock_summary
+    }));
+    setOrdersTotalCount(ordersPage.total_count);
+    setLoadedSlices(prev => ({
+      ...prev,
+      products: true,
+      orders: true
+    }));
+    return orderId;
+  };
+
   const updateOrderStatus = async (orderId: string, status: OrderStatus) => {
     await refreshAfter(
       supabase.rpc('update_order_status', {
@@ -937,6 +981,7 @@ export function useAppData() {
     addCustomer,
     updateCustomer,
     createOrder,
+    updateOrder,
     updateOrderStatus,
     deleteOrder,
     updateDelivery,

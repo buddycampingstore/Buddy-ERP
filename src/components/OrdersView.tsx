@@ -18,6 +18,7 @@ import { getOrderProfit, getOrderRevenue, getOrderSubtotal } from '../lib/financ
 import {
   Plus,
   Trash2,
+  Edit3,
   Percent,
   Clock,
   CheckCircle,
@@ -37,6 +38,18 @@ interface OrdersViewProps {
   addCustomer: (customerData: Omit<Customer, 'id'>) => Promise<Customer>;
   updateCustomer: (id: string, customerData: Omit<Customer, 'id'>) => Promise<void>;
   createOrder: (orderData: {
+    customer_id?: string | null;
+    customer_name_snapshot?: string;
+    date: string;
+    channel: OrderChannel;
+    status: OrderStatus;
+    delivery_type: DeliveryType;
+    discount: number;
+    items: { variant_id: string; qty: number; sale_price: number; discount: number }[];
+    shipping_fee?: number;
+    shipping_cost?: number;
+  }) => Promise<string>;
+  updateOrder: (orderId: string, orderData: {
     customer_id?: string | null;
     customer_name_snapshot?: string;
     date: string;
@@ -74,6 +87,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   addCustomer,
   updateCustomer,
   createOrder,
+  updateOrder,
   updateOrderStatus,
   deleteOrder,
   updateDelivery,
@@ -189,6 +203,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const [savingOrder, setSavingOrder] = useState(false);
   const [savingDelivery, setSavingDelivery] = useState(false);
   const [updatingStatusOrderId, setUpdatingStatusOrderId] = useState<string | null>(null);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [customerDraft, setCustomerDraft] = useState<Omit<Customer, 'id'>>({
     name: '',
     phone: '',
@@ -318,6 +333,57 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     }
   };
 
+  const resetOrderForm = () => {
+    setEditingOrderId(null);
+    setCustomerId('general');
+    setDate(new Date().toISOString().split('T')[0]);
+    setChannel('fb');
+    setStatus('confirmed');
+    setDeliveryType('shipping');
+    setGlobalDiscount(0);
+    setShippingFee(0);
+    setShippingCost(0);
+    const defaultVariant = activeVariants[0];
+    const defaultPrice = defaultVariant?.standard_sale_price ?? 0;
+    setItems([{ variant_id: defaultVariant?.id || '', qty: 1, sale_price: defaultPrice, discount: 0 }]);
+  };
+
+  const closeOrderForm = () => {
+    setIsAdding(false);
+    resetOrderForm();
+  };
+
+  const handleStartEditOrder = (order: typeof data.orders[number]) => {
+    // Stored order_items are one row per physical unit; collapse them back into
+    // qty-based lines keyed by variant + price + item discount for the form.
+    const lineMap = new Map<string, NewOrderItem>();
+    order.items.forEach(oi => {
+      const key = `${oi.variant_id}|${oi.sale_price}|${oi.discount}`;
+      const existing = lineMap.get(key);
+      if (existing) {
+        existing.qty += 1;
+      } else {
+        lineMap.set(key, { variant_id: oi.variant_id, qty: 1, sale_price: oi.sale_price, discount: oi.discount });
+      }
+    });
+    const lines = Array.from(lineMap.values());
+
+    setEditingOrderId(order.id);
+    setCustomerId(order.customer_id ?? 'general');
+    setDate(order.date);
+    setChannel(order.channel);
+    setStatus(order.status);
+    setDeliveryType(order.delivery_type);
+    setGlobalDiscount(order.discount || 0);
+    setShippingFee(order.shipping_fee || 0);
+    setShippingCost(order.shipping_cost || 0);
+    setItems(lines.length > 0 ? lines : [{ variant_id: '', qty: 1, sale_price: 0, discount: 0 }]);
+    setIsAdding(true);
+    if (typeof document !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   const handleSaveOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (savingOrder) return;
@@ -346,7 +412,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     setSavingOrder(true);
     try {
       const selectedCustomer = data.customers.find(customer => customer.id === customerId);
-      await createOrder({
+      const payload = {
         customer_id: customerId === 'general' ? null : customerId,
         customer_name_snapshot: selectedCustomer?.name || 'ลูกค้าทั่วไป',
         date,
@@ -357,24 +423,18 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         items,
         shipping_fee: deliveryType === 'shipping' ? shippingFee : 0,
         shipping_cost: deliveryType === 'shipping' ? shippingCost : 0
-      });
+      };
 
-      alert('สร้างออเดอร์และตัดสต็อกเรียบร้อยแล้ว!');
-      setIsAdding(false);
-      // Reset form defaults
-      setCustomerId('general');
-      setDate(new Date().toISOString().split('T')[0]);
-      setChannel('fb');
-      setStatus('confirmed');
-      setDeliveryType('shipping');
-      setGlobalDiscount(0);
-      setShippingFee(0);
-      setShippingCost(0);
-      const defaultVariant = activeVariants[0];
-      const defaultPrice = defaultVariant?.standard_sale_price ?? 0;
-      setItems([{ variant_id: defaultVariant?.id || '', qty: 1, sale_price: defaultPrice, discount: 0 }]);
+      if (editingOrderId) {
+        await updateOrder(editingOrderId, payload);
+        alert('แก้ไขออเดอร์และปรับสต็อกเรียบร้อยแล้ว!');
+      } else {
+        await createOrder(payload);
+        alert('สร้างออเดอร์และตัดสต็อกเรียบร้อยแล้ว!');
+      }
+      closeOrderForm();
     } catch (err: any) {
-      alert(`ไม่สามารถเปิดใบสั่งซื้อได้: ${err.message || err}`);
+      alert(`${editingOrderId ? 'แก้ไขออเดอร์ไม่สำเร็จ' : 'ไม่สามารถเปิดใบสั่งซื้อได้'}: ${err.message || err}`);
     } finally {
       setSavingOrder(false);
     }
@@ -397,10 +457,21 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     }
   };
 
+  // When editing, the order already holds (consumed) stock. Those units read as
+  // out of inventory, so add them back when checking availability — otherwise
+  // keeping the same quantity would falsely flag "insufficient stock".
+  const heldByEditingOrder = React.useMemo(() => {
+    const map = new Map<string, number>();
+    if (!editingOrderId) return map;
+    const order = data.orders.find(o => o.id === editingOrderId);
+    order?.items.forEach(oi => map.set(oi.variant_id, (map.get(oi.variant_id) || 0) + 1));
+    return map;
+  }, [editingOrderId, data.orders]);
+
   // --- REAL-TIME CALCULATIONS ---
   const calculatedItems = items.map(item => {
     const variant = variantById.get(item.variant_id);
-    const stockOnHand = stockQtyByVariantId.get(item.variant_id) || 0;
+    const stockOnHand = (stockQtyByVariantId.get(item.variant_id) || 0) + (heldByEditingOrder.get(item.variant_id) || 0);
     const wac = variant?.current_wac || 0;
     const itemTotal = (item.sale_price - item.discount) * item.qty;
     const costBasisTotal = wac * item.qty;
@@ -463,7 +534,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
             </button>
           ) : (
             <button
-              onClick={() => setIsAdding(false)}
+              onClick={closeOrderForm}
               className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold py-2.5 px-4 rounded-xl transition-colors cursor-pointer"
             >
               กลับไปดูบิลขายทั้งหมด
@@ -481,8 +552,13 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
             <div className="bg-white p-5 rounded-2xl border border-slate-150 shadow-xs space-y-4 lg:col-span-1">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                 <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2">
-                  <ShoppingBag className="w-4.5 h-4.5 text-emerald-700" /> ข้อมูลการสั่งซื้อ (ไม่มีรายชื่อลูกค้า)
+                  <ShoppingBag className="w-4.5 h-4.5 text-emerald-700" /> ข้อมูลการสั่งซื้อ
                 </h3>
+                {editingOrderId && (
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                    กำลังแก้ไข #{editingOrderId.replace('ord-', '').slice(0, 8)}
+                  </span>
+                )}
               </div>
 
               {/* Order Date */}
@@ -928,7 +1004,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                 <div className="flex gap-2 justify-end pt-3">
                   <button
                     type="button"
-                    onClick={() => setIsAdding(false)}
+                    onClick={closeOrderForm}
                     className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white"
                   >
                     ยกเลิกกลับ
@@ -938,7 +1014,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                     disabled={savingOrder || calculatedItems.some(i => i.error)}
                     className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center gap-1 shadow-md disabled:bg-slate-700 disabled:text-slate-400 cursor-pointer transition-colors"
                   >
-                    <Check className="w-4 h-4" /> {savingOrder ? 'กำลังบันทึก...' : 'เสร็จสิ้นการเปิดออเดอร์'}
+                    <Check className="w-4 h-4" /> {savingOrder ? 'กำลังบันทึก...' : editingOrderId ? 'บันทึกการแก้ไขออเดอร์' : 'เสร็จสิ้นการเปิดออเดอร์'}
                   </button>
                 </div>
               </div>
@@ -1001,7 +1077,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                     key={order.id}
                     className="bg-white border border-slate-150/40 rounded-2xl p-5 shadow-xs flex flex-col md:flex-row justify-between gap-4 relative group"
                   >
-                    {/* Trash float delete inside and release stock */}
+                    {/* Edit + delete actions (visible on mobile, hover on desktop) */}
+                    <button
+                      onClick={() => handleStartEditOrder(order)}
+                      className="absolute right-12 top-4 p-1.5 text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                      title="แก้ไขออเดอร์ (ปรับสต็อกให้อัตโนมัติ)"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => {
                         const ok = window.confirm(`ลบออเดอร์ ${order.id.slice(0, 8)} และคืนสต็อก ${order.items.length} ตัวเข้าคลังหรือไม่?`);

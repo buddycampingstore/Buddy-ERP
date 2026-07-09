@@ -54,6 +54,7 @@ export default function App() {
     addCustomer,
     updateCustomer,
     createOrder,
+    updateOrder,
     updateOrderStatus,
     deleteOrder,
     updateDelivery,
@@ -171,6 +172,7 @@ export default function App() {
             addCustomer={addCustomer}
             updateCustomer={updateCustomer}
             createOrder={createOrder}
+            updateOrder={updateOrder}
             updateOrderStatus={updateOrderStatus}
             deleteOrder={deleteOrder}
             updateDelivery={updateDelivery}
