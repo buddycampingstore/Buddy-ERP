@@ -11,18 +11,21 @@ import {
   Variant 
 } from '../types';
 import { getVariantStockQty } from '../lib/finance';
-import { 
-  Plus, 
-  Edit2, 
-  Trash2, 
-  Search, 
-  HelpCircle, 
-  Package, 
-  BookOpen, 
-  Tag, 
+import {
+  Plus,
+  Edit2,
+  Trash2,
+  Search,
+  HelpCircle,
+  Package,
+  BookOpen,
+  Tag,
   ExternalLink,
   Palette,
-  Image
+  Image,
+  Archive,
+  RotateCcw,
+  X
 } from 'lucide-react';
 
 interface ProductsViewProps {
@@ -30,13 +33,19 @@ interface ProductsViewProps {
   addBrand: (name: string) => Promise<Brand>;
   updateBrand: (id: string, name: string) => Promise<void>;
   archiveBrand: (id: string) => Promise<void>;
+  restoreBrand: (id: string) => Promise<void>;
   addModel: (brand_id: string, name: string, image?: string) => Promise<Model>;
   updateModel: (id: string, name: string, brand_id: string, image?: string) => Promise<void>;
   archiveModel: (id: string) => Promise<void>;
+  restoreModel: (id: string) => Promise<void>;
   uploadVariantImage: (file: File) => Promise<string>;
   addVariant: (model_id: string, color: string, standard_sale_price?: number, image?: string) => Promise<Variant>;
   updateVariant: (id: string, color: string, model_id: string, standard_sale_price?: number, image?: string) => Promise<void>;
   archiveVariant: (id: string) => Promise<void>;
+  restoreVariant: (id: string) => Promise<void>;
+  ensureArchivedProductsLoaded: (force?: boolean) => Promise<void>;
+  archivedProducts: { brands: Brand[]; models: Model[]; variants: Variant[] };
+  loadingArchived: boolean;
 }
 
 export const ProductsView: React.FC<ProductsViewProps> = ({
@@ -44,13 +53,19 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   addBrand,
   updateBrand,
   archiveBrand,
+  restoreBrand,
   addModel,
   updateModel,
   archiveModel,
+  restoreModel,
   uploadVariantImage,
   addVariant,
   updateVariant,
-  archiveVariant
+  archiveVariant,
+  restoreVariant,
+  ensureArchivedProductsLoaded,
+  archivedProducts,
+  loadingArchived
 }) => {
   const [subTab, setSubTab] = useState<'variants' | 'brands_models'>('variants');
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,6 +74,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   // --- IMAGE LIGHTBOX STATE ---
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState<string>('');
+
+  // --- ARCHIVED ("ซ่อน") ITEMS PANEL STATE ---
+  const [showArchivedPanel, setShowArchivedPanel] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
 
   // --- BRAND FORM STATE ---
   const [showBrandForm, setShowBrandForm] = useState(false);
@@ -236,6 +255,67 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       .then(() => alert('ซ่อนสีสินค้าเรียบร้อยแล้ว'))
       .catch((err: any) => alert(`ซ่อนสีสินค้าไม่สำเร็จ: ${err.message || err}`));
   };
+
+  const openArchivedPanel = () => {
+    setShowArchivedPanel(true);
+    void ensureArchivedProductsLoaded();
+  };
+
+  const handleRestoreBrand = async (id: string, name: string) => {
+    setRestoringId(id);
+    try {
+      await restoreBrand(id);
+      alert(`กู้คืนแบรนด์ "${name}" เรียบร้อยแล้ว (รุ่นและสีของแบรนด์นี้กู้คืนด้วย)`);
+    } catch (err: any) {
+      alert(`กู้คืนแบรนด์ไม่สำเร็จ: ${err.message || err}`);
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
+  const handleRestoreModel = async (id: string, name: string) => {
+    setRestoringId(id);
+    try {
+      await restoreModel(id);
+      alert(`กู้คืนรุ่น "${name}" เรียบร้อยแล้ว`);
+    } catch (err: any) {
+      alert(`กู้คืนรุ่นไม่สำเร็จ: ${err.message || err}`);
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
+  const handleRestoreVariant = async (id: string, color: string) => {
+    setRestoringId(id);
+    try {
+      await restoreVariant(id);
+      alert(`กู้คืนสี "${color}" เรียบร้อยแล้ว`);
+    } catch (err: any) {
+      alert(`กู้คืนสีไม่สำเร็จ: ${err.message || err}`);
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
+  const formatArchivedDate = (value?: string | null) => {
+    if (!value) return '';
+    try {
+      return new Date(value).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+    } catch {
+      return '';
+    }
+  };
+
+  // Archived rows only ship their own record — an archived model under a
+  // still-active brand needs the brand name looked up from the active list.
+  const allBrandsById = React.useMemo(
+    () => new Map([...data.brands, ...archivedProducts.brands].map((b) => [b.id, b])),
+    [data.brands, archivedProducts.brands]
+  );
+  const allModelsById = React.useMemo(
+    () => new Map([...data.models, ...archivedProducts.models].map((m) => [m.id, m])),
+    [data.models, archivedProducts.models]
+  );
 
   const brandById = React.useMemo(() => new Map(data.brands.map((b) => [b.id, b])), [data.brands]);
   const modelById = React.useMemo(() => new Map(data.models.map((m) => [m.id, m])), [data.models]);
@@ -478,6 +558,13 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             id="add-variant-btn"
           >
             <Plus className="w-4 h-4" /> เพิ่มสินค้า/สี
+          </button>
+          <button
+            onClick={openArchivedPanel}
+            className="bg-white hover:bg-slate-50 text-slate-500 border border-slate-200 text-xs font-semibold py-2 px-3 rounded-xl flex items-center gap-1 transition-colors cursor-pointer"
+            id="view-archived-btn"
+          >
+            <Archive className="w-4 h-4" /> ของที่ซ่อนไว้
           </button>
         </div>
       </div>
@@ -1443,6 +1530,119 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           <p className="text-[11px] text-white/50 mt-4 animate-slide-up select-none">
             คลิกพื้นที่สีดำรอบนอกเพื่อกลับเข้าสู่หน้าหลัก
           </p>
+        </div>
+      )}
+
+      {/* 5. ARCHIVED ("ซ่อน") ITEMS PANEL */}
+      {showArchivedPanel && (
+        <div
+          className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in"
+          id="archived-products-modal"
+          onClick={() => setShowArchivedPanel(false)}
+        >
+          <div
+            className="w-full max-w-2xl max-h-[85vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-2">
+                <Archive className="w-4.5 h-4.5 text-slate-500" />
+                <h3 className="font-bold text-slate-800 text-sm">ของที่ซ่อนไว้</h3>
+              </div>
+              <button
+                onClick={() => setShowArchivedPanel(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+                title="ปิดหน้าต่าง"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto p-4 space-y-5 grow">
+              {loadingArchived ? (
+                <p className="text-center text-slate-400 text-xs py-8">กำลังโหลดของที่ซ่อนไว้...</p>
+              ) : (
+                <>
+                  {archivedProducts.brands.length === 0
+                    && archivedProducts.models.length === 0
+                    && archivedProducts.variants.length === 0 && (
+                    <p className="text-center text-slate-400 text-xs py-8">ไม่มีของที่ซ่อนไว้</p>
+                  )}
+
+                  {archivedProducts.brands.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">แบรนด์ที่ซ่อน ({archivedProducts.brands.length})</h4>
+                      {archivedProducts.brands.map((brand) => (
+                        <div key={brand.id} className="flex items-center justify-between gap-3 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                          <div className="overflow-hidden">
+                            <p className="font-bold text-slate-800 text-xs truncate">{brand.name}</p>
+                            <p className="text-[10px] text-slate-400">ซ่อนเมื่อ {formatArchivedDate(brand.archived_at)}</p>
+                          </div>
+                          <button
+                            onClick={() => handleRestoreBrand(brand.id, brand.name)}
+                            disabled={restoringId === brand.id}
+                            className="shrink-0 flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-white border border-emerald-200 hover:bg-emerald-50 disabled:opacity-50 px-2.5 py-1.5 rounded-lg cursor-pointer"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" /> {restoringId === brand.id ? 'กำลังกู้คืน...' : 'กู้คืน'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {archivedProducts.models.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">รุ่นที่ซ่อน ({archivedProducts.models.length})</h4>
+                      {archivedProducts.models.map((model) => (
+                        <div key={model.id} className="flex items-center justify-between gap-3 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                          <div className="overflow-hidden">
+                            <p className="font-bold text-slate-800 text-xs truncate">
+                              {allBrandsById.get(model.brand_id)?.name || 'ไม่มีแบรนด์'} — {model.name}
+                            </p>
+                            <p className="text-[10px] text-slate-400">ซ่อนเมื่อ {formatArchivedDate(model.archived_at)}</p>
+                          </div>
+                          <button
+                            onClick={() => handleRestoreModel(model.id, model.name)}
+                            disabled={restoringId === model.id}
+                            className="shrink-0 flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-white border border-emerald-200 hover:bg-emerald-50 disabled:opacity-50 px-2.5 py-1.5 rounded-lg cursor-pointer"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" /> {restoringId === model.id ? 'กำลังกู้คืน...' : 'กู้คืน'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {archivedProducts.variants.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">สีสินค้าที่ซ่อน ({archivedProducts.variants.length})</h4>
+                      {archivedProducts.variants.map((variant) => {
+                        const model = allModelsById.get(variant.model_id);
+                        const brand = model ? allBrandsById.get(model.brand_id) : null;
+                        return (
+                          <div key={variant.id} className="flex items-center justify-between gap-3 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                            <div className="overflow-hidden">
+                              <p className="font-bold text-slate-800 text-xs truncate">
+                                {brand?.name || 'ไม่มีแบรนด์'} {model?.name || 'ไม่มีรุ่น'} — {variant.color}
+                              </p>
+                              <p className="text-[10px] text-slate-400">ซ่อนเมื่อ {formatArchivedDate(variant.archived_at)}</p>
+                            </div>
+                            <button
+                              onClick={() => handleRestoreVariant(variant.id, variant.color)}
+                              disabled={restoringId === variant.id}
+                              className="shrink-0 flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-white border border-emerald-200 hover:bg-emerald-50 disabled:opacity-50 px-2.5 py-1.5 rounded-lg cursor-pointer"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" /> {restoringId === variant.id ? 'กำลังกู้คืน...' : 'กู้คืน'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -43,13 +43,19 @@ export default function App() {
     addBrand,
     updateBrand,
     archiveBrand,
+    restoreBrand,
     addModel,
     updateModel,
     archiveModel,
+    restoreModel,
     uploadVariantImage,
     addVariant,
     updateVariant,
     archiveVariant,
+    restoreVariant,
+    ensureArchivedProductsLoaded,
+    archivedProducts,
+    loadingArchived,
     addPurchaseBatch,
     addCustomer,
     updateCustomer,
@@ -140,13 +146,19 @@ export default function App() {
             addBrand={addBrand}
             updateBrand={updateBrand}
             archiveBrand={archiveBrand}
+            restoreBrand={restoreBrand}
             addModel={addModel}
             updateModel={updateModel}
             archiveModel={archiveModel}
+            restoreModel={restoreModel}
             uploadVariantImage={uploadVariantImage}
             addVariant={addVariant}
             updateVariant={updateVariant}
             archiveVariant={archiveVariant}
+            restoreVariant={restoreVariant}
+            ensureArchivedProductsLoaded={ensureArchivedProductsLoaded}
+            archivedProducts={archivedProducts}
+            loadingArchived={loadingArchived}
           />
         );
       case 'purchase':

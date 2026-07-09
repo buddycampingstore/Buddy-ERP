@@ -307,6 +307,9 @@ export function useAppData() {
   const [purchaseTotalCount, setPurchaseTotalCount] = useState(0);
   const [orderFilters, setOrderFiltersState] = useState<OrderPageFilters>({ status: 'all', search: '' });
   const [error, setError] = useState<string | null>(null);
+  const [archivedProducts, setArchivedProducts] = useState<ProductsPayload>({ brands: [], models: [], variants: [] });
+  const [archivedLoaded, setArchivedLoaded] = useState(false);
+  const [loadingArchived, setLoadingArchived] = useState(false);
   const productsRequestRef = useRef<Promise<Required<ProductsPayload>> | null>(null);
   const customersLoadedRef = useRef(false);
   const ordersRequestSeqRef = useRef(0);
@@ -420,6 +423,34 @@ export function useAppData() {
       setSliceLoading('products', false);
     }
   }, [fetchProducts, loadedSlices.products, setSliceLoading]);
+
+  const fetchArchivedProducts = useCallback(async () => {
+    const { data: payload, error } = await timeSupabaseCall('get_archived_products', () =>
+      supabase.rpc('get_archived_products')
+    );
+    assertNoError(error);
+    return mapProductsPayload(payload);
+  }, []);
+
+  // "ซ่อน" (archive) used to be a one-way trip — nothing fetched archived rows
+  // for viewing/undo, so hiding something read as permanent deletion. This is
+  // loaded lazily only when the user opens the "ของที่ซ่อนไว้" panel.
+  const ensureArchivedProductsLoaded = useCallback(async (force = false) => {
+    if (!force && archivedLoaded) return;
+    setLoadingArchived(true);
+    setError(null);
+    try {
+      const archived = await fetchArchivedProducts();
+      setArchivedProducts(archived);
+      setArchivedLoaded(true);
+    } catch (err: any) {
+      const message = err?.message || 'โหลดข้อมูลสินค้าที่ซ่อนไม่สำเร็จ';
+      setError(message);
+      console.error(message, err);
+    } finally {
+      setLoadingArchived(false);
+    }
+  }, [archivedLoaded, fetchArchivedProducts]);
 
   const ensurePurchaseLoaded = useCallback(async (force = false) => {
     if (!force && loadedSlices.purchase) return;
@@ -749,6 +780,36 @@ export function useAppData() {
     await loadDashboard();
   };
 
+  // Restoring can cascade (e.g. restoring a brand un-hides its models and
+  // variants too), so the affected set isn't knowable from the client alone —
+  // refetch both the archived list and the active catalog rather than patch.
+  const restoreBrand = async (id: string) => {
+    await supabase.rpc('restore_brand', { p_brand_id: id }).then(({ error }) => assertNoError(error));
+    await Promise.all([
+      ensureArchivedProductsLoaded(true),
+      ensureProductsLoaded(true),
+      loadDashboard()
+    ]);
+  };
+
+  const restoreModel = async (id: string) => {
+    await supabase.rpc('restore_model', { p_model_id: id }).then(({ error }) => assertNoError(error));
+    await Promise.all([
+      ensureArchivedProductsLoaded(true),
+      ensureProductsLoaded(true),
+      loadDashboard()
+    ]);
+  };
+
+  const restoreVariant = async (id: string) => {
+    await supabase.rpc('restore_variant', { p_variant_id: id }).then(({ error }) => assertNoError(error));
+    await Promise.all([
+      ensureArchivedProductsLoaded(true),
+      ensureProductsLoaded(true),
+      loadDashboard()
+    ]);
+  };
+
   const addPurchaseBatch = async (
     date: string,
     shipping_cost: number,
@@ -962,6 +1023,10 @@ export function useAppData() {
     refresh: loadDashboard,
     loadDashboard,
     ensureProductsLoaded,
+    ensureArchivedProductsLoaded,
+    archivedProducts,
+    archivedLoaded,
+    loadingArchived,
     ensurePurchaseLoaded,
     ensureOrdersLoaded,
     loadMoreOrders,
@@ -970,13 +1035,16 @@ export function useAppData() {
     addBrand,
     updateBrand,
     archiveBrand,
+    restoreBrand,
     addModel,
     updateModel,
     archiveModel,
+    restoreModel,
     uploadVariantImage,
     addVariant,
     updateVariant,
     archiveVariant,
+    restoreVariant,
     addPurchaseBatch,
     addCustomer,
     updateCustomer,
