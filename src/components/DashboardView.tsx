@@ -5,6 +5,8 @@
 
 import React from 'react';
 import { DashboardSummary } from '../types';
+import { SetupGuide } from './SetupGuide';
+import { SetupProgress, SetupTargetTab } from '../lib/setupProgress';
 import { 
   TrendingUp, 
   Package, 
@@ -30,10 +32,17 @@ import {
 
 interface DashboardViewProps {
   summary: DashboardSummary | null;
-  onNavigate: (tab: string) => void;
+  setupProgress: SetupProgress;
+  setupGuideReady: boolean;
+  onNavigate: (tab: SetupTargetTab | 'dashboard') => void;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ summary, onNavigate }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({
+  summary,
+  setupProgress,
+  setupGuideReady,
+  onNavigate
+}) => {
   const COLORS = ['#047857', '#10b981', '#6ee7b7'];
 
   if (!summary) {
@@ -67,6 +76,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ summary, onNavigat
           รอบบัญชีปัจจุบัน: {summary.month}
         </div>
       </div>
+
+      {setupGuideReady && !setupProgress.isComplete && (
+        <SetupGuide
+          progress={setupProgress}
+          onNavigate={onNavigate}
+        />
+      )}
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" id="kpi-grid">
@@ -105,7 +121,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ summary, onNavigat
         {/* Card 3: Stock Value */}
         <div className="bg-white p-4 rounded-2xl shadow-xs border border-slate-100 flex flex-col justify-between" id="kpi-inventory">
           <div className="flex justify-between items-start">
-            <span className="text-slate-500 text-xs font-medium">มูลค่าคลังสินค้าปัจุจบัน</span>
+            <span className="text-slate-500 text-xs font-medium">มูลค่าคลังสินค้าปัจจุบัน</span>
             <div className="p-2 bg-amber-50 rounded-lg text-amber-600">
               <Package className="w-4 h-4" />
             </div>
@@ -156,8 +172,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ summary, onNavigat
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-full flex items-center justify-center text-slate-400 text-sm">
-                ยังไม่มีข้อมูลสั่งซื้อในระบบ
+              <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 text-sm gap-2">
+                <p>{setupProgress.hasSalesActivity ? 'ยังไม่มีข้อมูลยอดขายในรอบนี้' : 'ยอดขายจะแสดงหลังเปิดบิลแรก'}</p>
+                {!setupProgress.hasSalesActivity && setupProgress.activeStockQty > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('orders')}
+                    className="text-xs font-bold text-emerald-700 hover:text-emerald-800"
+                  >
+                    เปิดบิลขาย
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -191,7 +216,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ summary, onNavigat
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <div className="text-slate-400 text-sm">ไม่มีข้อมูลช่องทางขาย</div>
+              <div className="text-slate-400 text-sm text-center">
+                {setupProgress.hasSalesActivity ? 'ยังไม่มีข้อมูลช่องทางขายในรอบนี้' : 'ช่องทางขายจะแสดงหลังเปิดบิลแรก'}
+              </div>
             )}
           </div>
         </div>
@@ -265,7 +292,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ summary, onNavigat
                   })
                 ) : (
                   <tr>
-                    <td colSpan={4} className="text-center py-6 text-slate-400">ยังไม่มีรายการเสนอขาย</td>
+                    <td colSpan={4} className="text-center py-6 text-slate-400">
+                      {setupProgress.hasSalesActivity ? 'ยังไม่มีออเดอร์ล่าสุด' : 'ยังไม่มีออเดอร์แรก'}
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -307,7 +336,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ summary, onNavigat
           ) : (
             <div className="h-44 flex flex-col items-center justify-center text-center text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-100">
               <Package className="w-8 h-8 text-slate-300 mb-2" />
-              <p className="text-xs">แฮปปี้คุณมีสต็อกเก้าอี้เพียงพอทุกโมเดล!</p>
+              {setupProgress.activeVariantCount === 0 ? (
+                <>
+                  <p className="text-xs">ยังไม่มีสินค้าให้ติดตามสต็อก</p>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('products')}
+                    className="text-[11px] text-emerald-700 hover:text-emerald-800 font-bold mt-1"
+                  >
+                    ไปเพิ่มสินค้า
+                  </button>
+                </>
+              ) : setupProgress.activeStockQty === 0 ? (
+                <>
+                  <p className="text-xs">ยังไม่มีสต็อกพร้อมขาย</p>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('purchase')}
+                    className="text-[11px] text-emerald-700 hover:text-emerald-800 font-bold mt-1"
+                  >
+                    รับสินค้าเข้าคลัง
+                  </button>
+                </>
+              ) : (
+                <p className="text-xs">สต็อกเพียงพอทุกโมเดล</p>
+              )}
             </div>
           )}
         </div>

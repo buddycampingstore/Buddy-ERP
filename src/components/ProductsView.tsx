@@ -11,6 +11,8 @@ import {
   Variant 
 } from '../types';
 import { getVariantStockQty } from '../lib/finance';
+import { SetupProgress, SetupStep, SetupTargetTab } from '../lib/setupProgress';
+import { SetupGuide } from './SetupGuide';
 import {
   Plus,
   Edit2,
@@ -30,6 +32,8 @@ import {
 
 interface ProductsViewProps {
   data: AppData;
+  setupProgress: SetupProgress;
+  onNavigate: (tab: SetupTargetTab) => void;
   addBrand: (name: string) => Promise<Brand>;
   updateBrand: (id: string, name: string) => Promise<void>;
   archiveBrand: (id: string) => Promise<void>;
@@ -50,6 +54,8 @@ interface ProductsViewProps {
 
 export const ProductsView: React.FC<ProductsViewProps> = ({
   data,
+  setupProgress,
+  onNavigate,
   addBrand,
   updateBrand,
   archiveBrand,
@@ -508,6 +514,55 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     });
   }, [activeBrands, activeModels]);
 
+  const openBrandForm = () => {
+    setBrandEditId(null);
+    setBrandName('');
+    setShowBrandForm(true);
+  };
+
+  const openModelForm = (brandId = activeBrands[0]?.id || '') => {
+    if (!brandId) {
+      openBrandForm();
+      return;
+    }
+    setSubTab('brands_models');
+    setModelEditId(null);
+    setModelName('');
+    setModelBrandId(brandId);
+    setModelImage('');
+    setShowModelForm(true);
+  };
+
+  const openVariantForm = (modelId = activeModels[0]?.id || '') => {
+    if (!modelId) {
+      setSubTab('brands_models');
+      if (activeBrands.length === 0) openBrandForm();
+      return;
+    }
+    setVariantEditId(null);
+    setVariantColor('');
+    setVariantStandardSalePrice('');
+    setVariantImage('');
+    setVariantModelId(modelId);
+    setShowVariantForm(true);
+  };
+
+  const handleSetupGuideAction = (step: SetupStep) => {
+    if (step.id === 'brand') {
+      openBrandForm();
+      return;
+    }
+    if (step.id === 'model') {
+      openModelForm();
+      return;
+    }
+    if (step.id === 'variant') {
+      openVariantForm();
+      return;
+    }
+    onNavigate(step.targetTab);
+  };
+
   return (
     <div className="space-y-6" id="products-view-container">
       {/* Title Header */}
@@ -520,40 +575,19 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         </div>
         <div className="mt-2 md:mt-0 flex flex-wrap gap-2">
           <button
-            onClick={() => {
-              setBrandEditId(null);
-              setBrandName('');
-              setShowBrandForm(true);
-            }}
+            onClick={openBrandForm}
             className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold py-2 px-3 rounded-xl flex items-center gap-1 transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4" /> แบรนด์
           </button>
           <button
-            onClick={() => {
-              if (activeBrands.length === 0) {
-                alert('เพิ่มแบรนด์ก่อนอย่างน้อย 1 แบรนด์');
-                return;
-              }
-              setModelEditId(null);
-              setModelName('');
-              setModelBrandId(activeBrands[0].id);
-              setModelImage('');
-              setShowModelForm(true);
-            }}
+            onClick={() => openModelForm()}
             className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold py-2 px-3 rounded-xl flex items-center gap-1 transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4" /> รุ่น
           </button>
           <button
-            onClick={() => {
-              setVariantEditId(null);
-              setVariantColor('');
-              setVariantStandardSalePrice('');
-              setVariantImage('');
-              if (activeModels.length > 0) setVariantModelId(activeModels[0].id);
-              setShowVariantForm(true);
-            }}
+            onClick={() => openVariantForm()}
             className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold py-2 px-3 rounded-xl flex items-center gap-1 shadow-sm transition-colors cursor-pointer"
             id="add-variant-btn"
           >
@@ -568,6 +602,14 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           </button>
         </div>
       </div>
+
+      {!setupProgress.isComplete && (
+        <SetupGuide
+          progress={setupProgress}
+          onNavigate={onNavigate}
+          onAction={handleSetupGuideAction}
+        />
+      )}
 
       {/* Sub-tab switcher */}
       <div className="inline-flex bg-slate-100 p-1 rounded-xl gap-1" id="products-subtab-switcher">
@@ -949,8 +991,43 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                 </div>
               ))
             ) : (
-              <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-xs">
-                ไม่พบข้อมูลสินค้าที่ค้นหา หรือคลังว่างเปล่า
+              <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-xs">
+                {activeVariants.length === 0 ? (
+                  <div className="max-w-sm mx-auto space-y-3">
+                    <Package className="w-9 h-9 text-slate-300 mx-auto" />
+                    <div>
+                      <h3 className="font-extrabold text-slate-800 text-sm">ยังไม่มีสีหรือ SKU สินค้า</h3>
+                      <p className="text-slate-500 mt-1">
+                        เพิ่มแบรนด์และรุ่นก่อน แล้วค่อยสร้างสี/SKU เพื่อใช้รับเข้าและเปิดบิลขาย
+                      </p>
+                    </div>
+                    {setupProgress.currentStep && (
+                      <button
+                        type="button"
+                        onClick={() => handleSetupGuideAction(setupProgress.currentStep!)}
+                        className="inline-flex items-center justify-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-4 py-2 rounded-xl cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        {setupProgress.currentStep.ctaLabel}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="max-w-sm mx-auto space-y-3 text-slate-500">
+                    <Search className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p>ไม่พบสินค้าตามคำค้นหาหรือตัวกรองที่เลือก</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery('');
+                        setSelectedBrandId('all');
+                      }}
+                      className="text-emerald-700 hover:text-emerald-800 font-bold"
+                    >
+                      ล้างตัวกรอง
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1042,7 +1119,18 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                     })
                   ) : (
                     <tr>
-                      <td colSpan={4} className="text-center py-6 text-slate-400">ยังไม่มีแบรนด์สินค้า</td>
+                      <td colSpan={4} className="text-center py-6">
+                        <div className="inline-flex flex-col items-center gap-2 text-slate-500">
+                          <span>ยังไม่มีแบรนด์สินค้า</span>
+                          <button
+                            type="button"
+                            onClick={openBrandForm}
+                            className="text-emerald-700 hover:text-emerald-800 font-bold"
+                          >
+                            เพิ่มแบรนด์แรก
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   )}
                 </tbody>
@@ -1085,8 +1173,15 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                   );
                 })
               ) : (
-                <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-xs">
-                  ยังไม่มีแบรนด์สินค้า
+                <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-xs space-y-2">
+                  <p className="text-slate-500">ยังไม่มีแบรนด์สินค้า</p>
+                  <button
+                    type="button"
+                    onClick={openBrandForm}
+                    className="text-emerald-700 hover:text-emerald-800 font-bold"
+                  >
+                    เพิ่มแบรนด์แรก
+                  </button>
                 </div>
               )}
             </div>
@@ -1100,17 +1195,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                 <p className="text-slate-400 text-xs">รุ่นโมเดลและรูปสินค้าที่จัดเรียงสีสินค้าพ่วงไว้</p>
               </div>
               <button
-                onClick={() => {
-                  if (activeBrands.length === 0) {
-                    alert('กรุณาสร้างแบรนด์สินค้าก่อนอย่างน้อย 1 แบรนด์ จึงจะเพิ่มรุ่นสินค้าได้');
-                    return;
-                  }
-                  setModelEditId(null);
-                  setModelName('');
-                  setModelBrandId(activeBrands[0].id);
-                  setModelImage('');
-                  setShowModelForm(true);
-                }}
+                onClick={() => openModelForm()}
                 className="bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold py-1.5 px-3 rounded-lg flex items-center gap-1 cursor-pointer"
                 id="add-model-btn"
               >
@@ -1213,16 +1298,41 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                           })}
                         </div>
                       ) : (
-                        <div className="text-center py-5 bg-white rounded-xl border border-dashed border-slate-200 text-slate-400 text-xs">
-                          ยังไม่มีโมเดลรุ่นเก้าอี้ของแบรนด์นี้
+                        <div className="text-center py-5 bg-white rounded-xl border border-dashed border-slate-200 text-xs space-y-2">
+                          <p className="text-slate-500">ยังไม่มีรุ่นสินค้าของแบรนด์นี้</p>
+                          {brandGroup.brandId !== 'unbranded' && (
+                            <button
+                              type="button"
+                              onClick={() => openModelForm(brandGroup.brandId)}
+                              className="text-emerald-700 hover:text-emerald-800 font-bold"
+                            >
+                              เพิ่มรุ่นให้ {brandGroup.brandName}
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
                   );
                 })
               ) : (
-                <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-xs">
-                  ยังไม่มีข้อมูลรุ่นโมเดลสินค้า
+                <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-xs space-y-3">
+                  <BookOpen className="w-8 h-8 text-slate-300 mx-auto" />
+                  <div>
+                    <h3 className="font-extrabold text-slate-800 text-sm">ยังไม่มีรุ่นสินค้า</h3>
+                    <p className="text-slate-500 mt-1">
+                      {activeBrands.length === 0
+                        ? 'สร้างแบรนด์ก่อน แล้วค่อยเพิ่มรุ่นสินค้าใต้แบรนด์นั้น'
+                        : 'เพิ่มรุ่นสินค้าใต้แบรนด์ที่มีอยู่ เพื่อใช้ผูกสีและ SKU'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => activeBrands.length === 0 ? openBrandForm() : openModelForm()}
+                    className="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-4 py-2 rounded-xl cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    {activeBrands.length === 0 ? 'เพิ่มแบรนด์แรก' : 'เพิ่มรุ่นสินค้า'}
+                  </button>
                 </div>
               )}
             </div>
@@ -1358,8 +1468,18 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             </div>
             <form onSubmit={handleSaveVariant} className="p-6 space-y-4">
               {activeModels.length === 0 ? (
-                <div className="text-rose-500 text-xs font-medium bg-rose-50 p-3 rounded-lg">
-                  ไม่พบรหัสรุ่นสินค้ารายการใดๆ พลิกลุกสร้างรหัสรุ่นย่อยก่อนนะ!
+                <div className="text-slate-600 text-xs font-medium bg-amber-50 border border-amber-100 p-3 rounded-lg space-y-2">
+                  <p>ยังไม่มีรุ่นสินค้า ต้องสร้างแบรนด์และรุ่นก่อนเพิ่มสี/SKU</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowVariantForm(false);
+                      openModelForm();
+                    }}
+                    className="text-emerald-700 hover:text-emerald-800 font-bold"
+                  >
+                    ไปเพิ่มรุ่นสินค้า
+                  </button>
                 </div>
               ) : (
                 <>

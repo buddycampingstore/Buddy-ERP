@@ -3,10 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { Suspense, useCallback, useState } from 'react';
+import React, { Suspense, useCallback, useMemo, useState } from 'react';
 import { useAppData } from './hooks/useAppData';
 import { AnimatePresence, motion } from 'motion/react';
 import logoImg from './assets/images/logo_1782269852938.jpg';
+import { getSetupProgress } from './lib/setupProgress';
 import { 
   BarChart2, 
   Package, 
@@ -84,6 +85,15 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const setupProgress = useMemo(
+    () => getSetupProgress({
+      ...data,
+      dashboardSummary,
+      purchaseTotalCount,
+      ordersTotalCount
+    }),
+    [dashboardSummary, data, ordersTotalCount, purchaseTotalCount]
+  );
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -137,12 +147,21 @@ export default function App() {
 
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardView summary={dashboardSummary} onNavigate={(tab) => openTab(tab as TabType)} />;
+        return (
+          <DashboardView
+            summary={dashboardSummary}
+            setupProgress={setupProgress}
+            setupGuideReady={loadedSlices.products}
+            onNavigate={(tab) => openTab(tab as TabType)}
+          />
+        );
       case 'products':
         if (loadingSlices.products && !loadedSlices.products) return sliceLoading('กำลังโหลดข้อมูลสินค้า...');
         return (
           <ProductsView
             data={data}
+            setupProgress={setupProgress}
+            onNavigate={(tab) => openTab(tab as TabType)}
             addBrand={addBrand}
             updateBrand={updateBrand}
             archiveBrand={archiveBrand}
@@ -166,6 +185,8 @@ export default function App() {
         return (
           <PurchaseView
             data={data}
+            setupProgress={setupProgress}
+            onNavigate={(tab) => openTab(tab as TabType)}
             addPurchaseBatch={addPurchaseBatch}
             loadMorePurchaseBatches={loadMorePurchaseBatches}
             purchaseHasMore={purchaseHasMore}
@@ -181,6 +202,8 @@ export default function App() {
         return (
           <OrdersView
             data={data}
+            setupProgress={setupProgress}
+            onNavigate={(tab) => openTab(tab as TabType)}
             addCustomer={addCustomer}
             updateCustomer={updateCustomer}
             createOrder={createOrder}

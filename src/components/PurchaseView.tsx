@@ -9,12 +9,14 @@ import {
   Variant,
   PurchaseBatch
 } from '../types';
+import { SetupProgress, SetupTargetTab } from '../lib/setupProgress';
 import {
   Plus,
   Trash2,
   Calendar,
   DollarSign,
   Truck,
+  Package,
   ShieldAlert,
   Check,
   Clock,
@@ -26,6 +28,8 @@ import {
 
 interface PurchaseViewProps {
   data: AppData;
+  setupProgress: SetupProgress;
+  onNavigate: (tab: SetupTargetTab) => void;
   addPurchaseBatch: (
     date: string,
     shipping_cost: number,
@@ -50,6 +54,8 @@ interface NewBatchItem {
 
 export const PurchaseView: React.FC<PurchaseViewProps> = ({
   data,
+  setupProgress,
+  onNavigate,
   addPurchaseBatch,
   loadMorePurchaseBatches,
   purchaseHasMore,
@@ -105,6 +111,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
   }, [activeVariants]);
   const [isAdding, setIsAdding] = useState(false);
   const [openingForm, setOpeningForm] = useState(false);
+  const [pendingOpenAfterProducts, setPendingOpenAfterProducts] = useState(false);
   const [savingBatch, setSavingBatch] = useState(false);
   const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null);
 
@@ -184,20 +191,32 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
 
   const handleStartAdding = async () => {
     if (productsLoaded && activeVariants.length === 0) {
-      alert('กรุณาเพิ่มรายละเอียดสินค้าสี/รุ่นอย่างน้อย 1 รายการในหน้า "สินค้า" ก่อนบันทึกรับเข้า');
+      onNavigate('products');
       return;
     }
 
     try {
       setOpeningForm(true);
       if (!productsLoaded) {
+        setPendingOpenAfterProducts(true);
         await ensureProductsLoaded();
+        return;
       }
       setIsAdding(true);
     } finally {
       setOpeningForm(false);
     }
   };
+
+  const needsCatalogSetup = productsLoaded && activeVariants.length === 0;
+
+  React.useEffect(() => {
+    if (!pendingOpenAfterProducts || !productsLoaded || loadingProducts) return;
+    setPendingOpenAfterProducts(false);
+    if (activeVariants.length > 0) {
+      setIsAdding(true);
+    }
+  }, [activeVariants.length, loadingProducts, pendingOpenAfterProducts, productsLoaded]);
 
   // --- CALCULATIONS FOR PREVIEW ---
   const totalQty_ใหม่ = items.reduce((sum, i) => sum + i.qty, 0);
@@ -223,7 +242,12 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
               className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold py-2.5 px-4 rounded-xl flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
               id="start-purchase-btn"
             >
-              <Plus className="w-4.5 h-4.5" /> {openingForm || loadingProducts ? 'กำลังเตรียมข้อมูลสินค้า...' : 'บันทึกรับสินค้าล็อตใหม่'}
+              <Plus className="w-4.5 h-4.5" />
+              {openingForm || loadingProducts
+                ? 'กำลังเตรียมข้อมูลสินค้า...'
+                : needsCatalogSetup
+                  ? 'ไปเพิ่มสินค้า/สีก่อน'
+                  : 'บันทึกรับสินค้าล็อตใหม่'}
             </button>
           ) : (
             <button
@@ -548,6 +572,28 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
             </div>
           </div>
         </form>
+      ) : needsCatalogSetup ? (
+        <div className="bg-white border border-slate-100 rounded-2xl p-8 md:p-10 text-center space-y-4 animate-fade-in">
+          <Package className="w-10 h-10 text-slate-300 mx-auto" />
+          <div>
+            <h3 className="font-extrabold text-slate-800 text-sm">ยังไม่มีสินค้าให้รับเข้าคลัง</h3>
+            <p className="text-xs text-slate-500 mt-1">
+              {setupProgress.currentStep?.id === 'brand'
+                ? 'เริ่มจากสร้างแบรนด์ แล้วเพิ่มรุ่นและสี/SKU ก่อนบันทึกรับเข้า'
+                : setupProgress.currentStep?.id === 'model'
+                  ? 'เพิ่มรุ่นสินค้าใต้แบรนด์ก่อน แล้วค่อยสร้างสี/SKU สำหรับรับเข้า'
+                  : 'เพิ่มสี/SKU ในหน้าสินค้าก่อน ระบบจึงจะเลือกสินค้ามารับเข้าได้'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate('products')}
+            className="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2.5 px-4 rounded-xl cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            ไปตั้งค่าสินค้า
+          </button>
+        </div>
       ) : (
         // ================== STATE: BATCH HISTORY ==================
         <div className="space-y-4 animate-fade-in" id="purchase-history">
@@ -772,8 +818,20 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
                 );
               })
             ) : (
-              <div className="bg-white p-12 text-center text-slate-400 border border-slate-150 rounded-2xl">
-                ไม่เคยมีประวัติการรับเข้าสินค้าใดๆ
+              <div className="bg-white p-8 md:p-12 text-center border border-slate-150 rounded-2xl space-y-3">
+                <Truck className="w-9 h-9 text-slate-300 mx-auto" />
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800">ยังไม่มีประวัติรับเข้า</h3>
+                  <p className="text-xs text-slate-500 mt-1">บันทึกรับสินค้าล็อตแรกเพื่อเพิ่มสต็อกและคำนวณ WAC</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleStartAdding()}
+                  className="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2.5 px-4 rounded-xl cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  บันทึกรับสินค้าล็อตแรก
+                </button>
 	              </div>
 	            )}
 	          </div>

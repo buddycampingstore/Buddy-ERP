@@ -15,6 +15,7 @@ import {
   OrderPageFilters
 } from '../types';
 import { getOrderProfit, getOrderRevenue, getOrderSubtotal } from '../lib/finance';
+import { SetupProgress, SetupTargetTab } from '../lib/setupProgress';
 import {
   Plus,
   Trash2,
@@ -35,6 +36,8 @@ import {
 
 interface OrdersViewProps {
   data: AppData;
+  setupProgress: SetupProgress;
+  onNavigate: (tab: SetupTargetTab) => void;
   addCustomer: (customerData: Omit<Customer, 'id'>) => Promise<Customer>;
   updateCustomer: (id: string, customerData: Omit<Customer, 'id'>) => Promise<void>;
   createOrder: (orderData: {
@@ -84,6 +87,8 @@ interface NewOrderItem {
 
 export const OrdersView: React.FC<OrdersViewProps> = ({
   data,
+  setupProgress,
+  onNavigate,
   addCustomer,
   updateCustomer,
   createOrder,
@@ -162,6 +167,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
   const [isAdding, setIsAdding] = useState(false);
   const [openingForm, setOpeningForm] = useState(false);
+  const [pendingOpenAfterProducts, setPendingOpenAfterProducts] = useState(false);
   const [searchDraft, setSearchDraft] = useState(orderFilters.search);
   const [editingDeliveryOrderId, setEditingDeliveryOrderId] = useState<string | null>(null);
   const [trackingNo, setTrackingNo] = useState('');
@@ -442,14 +448,20 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
   const handleStartAdding = async () => {
     if (productsLoaded && activeVariants.length === 0) {
-      alert('กรุณาเพิ่มรายละเอียดสินค้าสี/รุ่นอย่างน้อย 1 รายการในหน้า "สินค้า" ก่อนเปิดบิลขาย');
+      onNavigate('products');
+      return;
+    }
+    if (productsLoaded && setupProgress.activeStockQty === 0) {
+      onNavigate('purchase');
       return;
     }
 
     try {
       setOpeningForm(true);
       if (!productsLoaded) {
+        setPendingOpenAfterProducts(true);
         await ensureProductsLoaded();
+        return;
       }
       setIsAdding(true);
     } finally {
@@ -491,6 +503,23 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const totalProfit_สด = totalSale_สด - totalCost_สด;
 
   const visibleOrders = data.orders;
+  const needsCatalogSetup = productsLoaded && activeVariants.length === 0;
+  const needsStockSetup = productsLoaded && activeVariants.length > 0 && setupProgress.activeStockQty === 0;
+  const hasActiveOrderFilter = orderFilters.status !== 'all' || orderFilters.search.trim().length > 0;
+
+  React.useEffect(() => {
+    if (!pendingOpenAfterProducts || !productsLoaded || loadingProducts) return;
+    setPendingOpenAfterProducts(false);
+    if (activeVariants.length > 0 && setupProgress.activeStockQty > 0) {
+      setIsAdding(true);
+    }
+  }, [
+    activeVariants.length,
+    loadingProducts,
+    pendingOpenAfterProducts,
+    productsLoaded,
+    setupProgress.activeStockQty
+  ]);
 
   const statusClassMap = {
     'pending': 'bg-slate-100 text-slate-600 border border-slate-200',
@@ -530,7 +559,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
               className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold py-2.5 px-4 rounded-xl flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
               id="start-order-btn"
             >
-              <Plus className="w-4.5 h-4.5" /> {openingForm || loadingProducts ? 'กำลังเตรียมข้อมูลสินค้า...' : 'เปิดบิลขายเก้าอี้ใหม่ (Fulfill)'}
+              <Plus className="w-4.5 h-4.5" />
+              {openingForm || loadingProducts
+                ? 'กำลังเตรียมข้อมูลสินค้า...'
+                : needsCatalogSetup
+                  ? 'ไปเพิ่มสินค้า/สีก่อน'
+                  : needsStockSetup
+                    ? 'ไปรับสินค้าเข้าคลังก่อน'
+                    : 'เปิดบิลขายเก้าอี้ใหม่'}
             </button>
           ) : (
             <button
@@ -1021,6 +1057,42 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
             </div>
           </div>
         </form>
+      ) : needsCatalogSetup ? (
+        <div className="bg-white border border-slate-100 rounded-2xl p-8 md:p-10 text-center space-y-4 animate-fade-in">
+          <ShoppingBag className="w-10 h-10 text-slate-300 mx-auto" />
+          <div>
+            <h3 className="font-extrabold text-slate-800 text-sm">ยังไม่มีสินค้าให้เปิดบิลขาย</h3>
+            <p className="text-xs text-slate-500 mt-1">
+              ตั้งค่าแบรนด์ รุ่น และสี/SKU ในหน้าสินค้าก่อน ระบบจึงจะนำสินค้าเข้าบิลได้
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate('products')}
+            className="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2.5 px-4 rounded-xl cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            ไปตั้งค่าสินค้า
+          </button>
+        </div>
+      ) : needsStockSetup ? (
+        <div className="bg-white border border-slate-100 rounded-2xl p-8 md:p-10 text-center space-y-4 animate-fade-in">
+          <Truck className="w-10 h-10 text-slate-300 mx-auto" />
+          <div>
+            <h3 className="font-extrabold text-slate-800 text-sm">ยังไม่มีสต็อกพร้อมขาย</h3>
+            <p className="text-xs text-slate-500 mt-1">
+              รับสินค้าเข้าคลังก่อนเปิดบิลขาย เพื่อให้ระบบตัดสต็อกและคำนวณกำไรจาก WAC ได้ถูกต้อง
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate('purchase')}
+            className="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2.5 px-4 rounded-xl cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            รับสินค้าเข้าคลัง
+          </button>
+        </div>
       ) : (
         // ================== STATE: ORDERS HISTORY VIEW ==================
         <div className="space-y-4 animate-fade-in" id="orders-list-view">
@@ -1324,8 +1396,29 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                 );
               })
             ) : (
-              <div className="bg-white p-12 text-center text-slate-400 border border-slate-150 rounded-2xl">
-                ไม่พบบันทึกใบสั่งซื้อตามตัวกรองที่เลือก
+              <div className="bg-white p-8 md:p-12 text-center border border-slate-150 rounded-2xl space-y-3">
+                <ShoppingBag className="w-9 h-9 text-slate-300 mx-auto" />
+                {setupProgress.hasSalesActivity || hasActiveOrderFilter ? (
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-800">ไม่พบออเดอร์ตามตัวกรอง</h3>
+                    <p className="text-xs text-slate-500 mt-1">ลองเปลี่ยนสถานะหรือคำค้นหาเพื่อดูบิลอื่น</p>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <h3 className="text-sm font-extrabold text-slate-800">ยังไม่มีออเดอร์แรก</h3>
+                      <p className="text-xs text-slate-500 mt-1">เปิดบิลขายจากสต็อกพร้อมขาย แล้วระบบจะตัดคลังและบันทึกกำไรให้</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleStartAdding()}
+                      className="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2.5 px-4 rounded-xl cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      เปิดบิลขายแรก
+                    </button>
+                  </>
+                )}
 	              </div>
 	            )}
 	          </div>
