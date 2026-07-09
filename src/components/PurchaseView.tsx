@@ -105,6 +105,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
   }, [activeVariants]);
   const [isAdding, setIsAdding] = useState(false);
   const [openingForm, setOpeningForm] = useState(false);
+  const [savingBatch, setSavingBatch] = useState(false);
   const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null);
 
   // --- IMAGE LIGHTBOX STATE ---
@@ -120,7 +121,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
   const [otherCost, setOtherCost] = useState<number>(0);
   const [note, setNote] = useState('');
   const [items, setItems] = useState<NewBatchItem[]>([
-    { variant_id: activeVariants[0]?.id || '', qty: 0, unit_price: 1500 }
+    { variant_id: activeVariants[0]?.id || '', qty: 0, unit_price: 0 }
   ]);
 
   const optionalNumberInputValue = (value: number) => value === 0 ? '' : value;
@@ -129,7 +130,7 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
   const handleAddItemRow = () => {
     setItems([
       ...items,
-      { variant_id: activeVariants[0]?.id || '', qty: 0, unit_price: 1500 }
+      { variant_id: activeVariants[0]?.id || '', qty: 0, unit_price: 0 }
     ]);
   };
 
@@ -152,11 +153,15 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
 
   const handleSaveBatch = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Double-clicking on a slow connection used to create duplicate batches
+    // and double-count stock/WAC — this is a money-critical form.
+    if (savingBatch) return;
     if (items.some(item => !item.variant_id || item.qty <= 0 || item.unit_price < 0)) {
       alert('กรุณากรอกข้อมูลรายการสินค้าให้ถูกต้อง (จำนวนต้องมากกว่า 0 และราคาต้นทุนห้ามติดลบ)');
       return;
     }
 
+    setSavingBatch(true);
     try {
       const batchId = await addPurchaseBatch(date, shippingCost, otherCost, items, note);
       if (batchId) {
@@ -168,10 +173,12 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
         setShippingCost(0);
         setOtherCost(0);
         setNote('');
-        setItems([{ variant_id: activeVariants[0]?.id || '', qty: 0, unit_price: 1500 }]);
+        setItems([{ variant_id: activeVariants[0]?.id || '', qty: 0, unit_price: 0 }]);
       }
     } catch (err: any) {
       alert(`บันทึกรับเข้าไม่สำเร็จ: ${err.message || err}`);
+    } finally {
+      setSavingBatch(false);
     }
   };
 
@@ -531,9 +538,10 @@ export const PurchaseView: React.FC<PurchaseViewProps> = ({
                   </button>
                   <button
                     type="submit"
-                    className="px-6 py-2.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs cursor-pointer flex items-center gap-1"
+                    disabled={savingBatch}
+                    className="px-6 py-2.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-xl shadow-xs cursor-pointer flex items-center gap-1"
                   >
-                    <Check className="w-4.5 h-4.5" /> ยืนยันบันทึกรับเข้าคลัง & อัปเดต WAC
+                    <Check className="w-4.5 h-4.5" /> {savingBatch ? 'กำลังบันทึก...' : 'ยืนยันบันทึกรับเข้าคลัง & อัปเดต WAC'}
                   </button>
                 </div>
               </div>

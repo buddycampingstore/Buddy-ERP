@@ -186,6 +186,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const [shippingCost, setShippingCost] = useState<number>(0);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [savingCustomer, setSavingCustomer] = useState(false);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [savingDelivery, setSavingDelivery] = useState(false);
+  const [updatingStatusOrderId, setUpdatingStatusOrderId] = useState<string | null>(null);
   const [customerDraft, setCustomerDraft] = useState<Omit<Customer, 'id'>>({
     name: '',
     phone: '',
@@ -193,7 +196,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     note: ''
   });
   const [items, setItems] = useState<NewOrderItem[]>([
-    { variant_id: '', qty: 1, sale_price: 2200, discount: 0 }
+    { variant_id: '', qty: 1, sale_price: 0, discount: 0 }
   ]);
 
   const numberInputValue = (value: number) => value === 0 ? '' : value;
@@ -207,9 +210,11 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   };
 
   const handleSaveDeliveryInfo = async (orderId: string) => {
+    if (savingDelivery) return;
+    setSavingDelivery(true);
     try {
       await updateDelivery(orderId, {
-        tracking: trackingNo,
+        tracking: trackingNo.trim(),
         pickup_datetime: pickupDate,
         status: deliveryStatus
       });
@@ -217,6 +222,32 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       alert('อัปเดตข้อมูลจัดส่งเรียบร้อยแล้ว');
     } catch (err: any) {
       alert(`อัปเดตข้อมูลจัดส่งไม่สำเร็จ: ${err.message || err}`);
+    } finally {
+      setSavingDelivery(false);
+    }
+  };
+
+  // Status changes are forward-only and irreversible, so a mis-tap used to
+  // advance an order permanently with no confirmation and no feedback.
+  const STATUS_LABELS: Record<OrderStatus, string> = {
+    pending: 'รอโอนเงิน',
+    confirmed: 'ยืนยันแล้ว',
+    shipped: 'ส่งของแล้ว',
+    delivered: 'ส่งถึงมือแล้ว'
+  };
+
+  const handleQuickStatusChange = async (orderId: string, nextStatus: OrderStatus) => {
+    if (updatingStatusOrderId) return;
+    const ok = window.confirm(`เปลี่ยนสถานะออเดอร์เป็น "${STATUS_LABELS[nextStatus]}" ใช่หรือไม่? (เปลี่ยนแล้วย้อนกลับไม่ได้)`);
+    if (!ok) return;
+    setUpdatingStatusOrderId(orderId);
+    try {
+      await updateOrderStatus(orderId, nextStatus);
+      alert(`อัปเดตสถานะเป็น "${STATUS_LABELS[nextStatus]}" เรียบร้อยแล้ว`);
+    } catch (err: any) {
+      alert(`อัปเดตสถานะไม่สำเร็จ: ${err.message || err}`);
+    } finally {
+      setUpdatingStatusOrderId(null);
     }
   };
 
@@ -224,7 +255,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   React.useEffect(() => {
     if (isAdding && activeVariants.length > 0 && !items[0].variant_id) {
       const v0 = activeVariants[0];
-      const defaultPrice = (v0 && v0.standard_sale_price !== undefined) ? v0.standard_sale_price : 2200;
+      const defaultPrice = v0?.standard_sale_price ?? 0;
       setItems([{ variant_id: v0.id, qty: 1, sale_price: defaultPrice, discount: 0 }]);
     }
   }, [isAdding, activeVariants, items]);
@@ -233,7 +264,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const handleAddItemRow = () => {
     const firstId = activeVariants[0]?.id || '';
     const v = variantById.get(firstId);
-    const defaultPrice = (v && v.standard_sale_price !== undefined) ? v.standard_sale_price : 2200;
+    const defaultPrice = v?.standard_sale_price ?? 0;
     setItems([...items, { variant_id: firstId, qty: 1, sale_price: defaultPrice, discount: 0 }]);
   };
 
@@ -263,14 +294,20 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   };
 
   const handleSaveCustomer = async () => {
-    if (!customerDraft.name.trim()) {
+    const draftName = customerDraft.name.trim();
+    if (!draftName) {
       alert('กรุณากรอกชื่อลูกค้า');
       return;
+    }
+    const duplicate = data.customers.find(c => c.name.trim().toLowerCase() === draftName.toLowerCase());
+    if (duplicate) {
+      const ok = window.confirm(`มีลูกค้าชื่อ "${duplicate.name}" อยู่แล้ว ต้องการสร้างซ้ำอีกคนจริงหรือไม่?\n(ถ้าเป็นคนเดียวกัน กด Cancel แล้วเลือกจากรายชื่อเดิม)`);
+      if (!ok) return;
     }
 
     setSavingCustomer(true);
     try {
-      const created = await addCustomer(customerDraft);
+      const created = await addCustomer({ ...customerDraft, name: draftName });
       setCustomerId(created.id);
       setCustomerDraft({ name: '', phone: '', facebook: '', note: '' });
       setShowCustomerForm(false);
@@ -283,6 +320,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
   const handleSaveOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingOrder) return;
     if (items.some(item => !item.variant_id)) {
       alert('กรุณาเลือกโมเดลเก้าอี้และตัวเลือกสินค้าให้ครบทุกแถว');
       return;
@@ -292,6 +330,20 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       return;
     }
 
+    // A bill-level discount typo (e.g. 20000 instead of 2000) used to slip
+    // through and save a negative-revenue order silently.
+    const subtotal = items.reduce((sum, item) => sum + item.qty * item.sale_price, 0)
+      + (deliveryType === 'shipping' ? shippingFee : 0);
+    if (globalDiscount > subtotal) {
+      alert(`ส่วนลดท้ายบิล (฿${globalDiscount.toLocaleString()}) มากกว่ายอดรวม (฿${subtotal.toLocaleString()}) กรุณาตรวจสอบอีกครั้ง`);
+      return;
+    }
+    if (items.some(item => item.sale_price === 0)) {
+      const ok = window.confirm('มีสินค้าราคา 0 บาทในบิลนี้ ต้องการบันทึกเป็นของแถมจริงหรือไม่?');
+      if (!ok) return;
+    }
+
+    setSavingOrder(true);
     try {
       const selectedCustomer = data.customers.find(customer => customer.id === customerId);
       await createOrder({
@@ -307,7 +359,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         shipping_cost: deliveryType === 'shipping' ? shippingCost : 0
       });
 
-      alert('เปิดบันทึกปิดการขายสร้างออเดอร์เรียบร้อย!');
+      alert('สร้างออเดอร์และตัดสต็อกเรียบร้อยแล้ว!');
       setIsAdding(false);
       // Reset form defaults
       setCustomerId('general');
@@ -319,10 +371,12 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       setShippingFee(0);
       setShippingCost(0);
       const defaultVariant = activeVariants[0];
-      const defaultPrice = (defaultVariant && defaultVariant.standard_sale_price !== undefined) ? defaultVariant.standard_sale_price : 2200;
+      const defaultPrice = defaultVariant?.standard_sale_price ?? 0;
       setItems([{ variant_id: defaultVariant?.id || '', qty: 1, sale_price: defaultPrice, discount: 0 }]);
     } catch (err: any) {
       alert(`ไม่สามารถเปิดใบสั่งซื้อได้: ${err.message || err}`);
+    } finally {
+      setSavingOrder(false);
     }
   };
 
@@ -578,7 +632,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                         type="number"
                         min="0"
                         value={numberInputValue(shippingFee)}
-                        onChange={(e) => setShippingFee(Math.max(0, parseInt(e.target.value) || 0))}
+                        onChange={(e) => setShippingFee(Math.max(0, parseFloat(e.target.value) || 0))}
                         className="w-full text-xs p-2 bg-white outline-hidden border border-slate-200 rounded-lg text-slate-800 font-mono font-bold"
                         placeholder="0"
                       />
@@ -589,7 +643,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                         type="number"
                         min="0"
                         value={numberInputValue(shippingCost)}
-                        onChange={(e) => setShippingCost(Math.max(0, parseInt(e.target.value) || 0))}
+                        onChange={(e) => setShippingCost(Math.max(0, parseFloat(e.target.value) || 0))}
                         className="w-full text-xs p-2 bg-white outline-hidden border border-slate-200 rounded-lg text-slate-800 font-mono font-bold text-rose-600"
                         placeholder="0"
                       />
@@ -769,7 +823,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                                 type="number"
                                 min="0"
                                 value={numberInputValue(item.sale_price)}
-                                onChange={(e) => handleUpdateItemRow(idx, 'sale_price', Math.max(0, parseInt(e.target.value) || 0))}
+                                onChange={(e) => handleUpdateItemRow(idx, 'sale_price', Math.max(0, parseFloat(e.target.value) || 0))}
                                 className="w-full text-xs p-2.5 md:p-2 bg-white outline-hidden border border-slate-200 rounded-lg text-slate-800 font-mono text-right focus:border-emerald-700"
                                 required
                               />
@@ -833,7 +887,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                         type="number"
                         min="0"
                         value={numberInputValue(globalDiscount)}
-                        onChange={(e) => setGlobalDiscount(Math.max(0, parseInt(e.target.value) || 0))}
+                        onChange={(e) => setGlobalDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
                         placeholder="0"
                         className="text-xs p-1.5 mt-0.5 bg-white outline-hidden border border-slate-200 rounded-md text-slate-800 font-mono font-bold w-32 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500 transition-all"
                       />
@@ -881,10 +935,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                   </button>
                   <button
                     type="submit"
-                    disabled={calculatedItems.some(i => i.error)}
+                    disabled={savingOrder || calculatedItems.some(i => i.error)}
                     className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center gap-1 shadow-md disabled:bg-slate-700 disabled:text-slate-400 cursor-pointer transition-colors"
                   >
-                    <Check className="w-4 h-4" /> เสร็จสิ้นการเปิดออเดอร์
+                    <Check className="w-4 h-4" /> {savingOrder ? 'กำลังบันทึก...' : 'เสร็จสิ้นการเปิดออเดอร์'}
                   </button>
                 </div>
               </div>
@@ -901,7 +955,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
               <Search className="w-4 h-4 text-slate-400" />
 	              <input
 	                type="text"
-	                placeholder="ค้นหารหัสบิล, ลูกค้า, เบอร์โทรศ์ หรือ รุ่น..."
+	                placeholder="ค้นหารหัสบิล, ลูกค้า, เบอร์โทรศัพท์ หรือ รุ่น..."
 	                value={searchDraft}
 	                onChange={(e) => setSearchDraft(e.target.value)}
 	                className="bg-transparent outline-hidden w-full text-slate-700 text-xs"
@@ -956,7 +1010,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                           .then(() => alert('ลบออเดอร์และคืนสต็อกเรียบร้อยแล้ว'))
                           .catch((err: any) => alert(`ลบออเดอร์ไม่สำเร็จ: ${err.message || err}`));
                       }}
-                      className="absolute right-4 top-4 p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute right-4 top-4 p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
                       title="ลบออเดอร์และคืนสต็อกของ"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -1101,10 +1155,11 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                               </button>
                               <button
                                 type="button"
+                                disabled={savingDelivery}
                                 onClick={() => handleSaveDeliveryInfo(order.id)}
-                                className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white font-bold"
+                                className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white font-bold disabled:bg-slate-300"
                               >
-                                บันทึก
+                                {savingDelivery ? 'กำลังบันทึก...' : 'บันทึก'}
                               </button>
                             </div>
                           </div>
@@ -1138,7 +1193,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                           {order.shipping_fee !== undefined && order.shipping_fee > 0 ? ` (+ ค่าส่ง ฿${order.shipping_fee})` : ''}
                         </span>
                         <div className="text-[10px] mt-1 font-semibold flex items-center gap-1 justify-end">
-                          <span className="text-slate-400">กำไรสุทธิแบรนด์:</span>
+                          <span className="text-slate-400">กำไรสุทธิออเดอร์:</span>
                           <span className={`font-mono text-xs ${totalBatchProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                             ฿{totalBatchProfit.toLocaleString('th-TH', { maximumFractionDigits: 1 })}
                           </span>
@@ -1150,26 +1205,29 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                         <span className="text-[9px] text-slate-400 block w-full mb-1">เปลี่ยนสถานะด่วน:</span>
                         {order.status === 'pending' && (
                           <button
-                            onClick={() => updateOrderStatus(order.id, 'confirmed').catch((err: any) => alert(`อัปเดตสถานะไม่สำเร็จ: ${err.message || err}`))}
-                            className="text-[10px] bg-slate-900 text-white font-semibold py-1 px-2.5 rounded-lg hover:bg-slate-800 cursor-pointer"
+                            disabled={updatingStatusOrderId === order.id}
+                            onClick={() => handleQuickStatusChange(order.id, 'confirmed')}
+                            className="text-[10px] bg-slate-900 text-white font-semibold py-1 px-2.5 rounded-lg hover:bg-slate-800 disabled:bg-slate-400 cursor-pointer"
                           >
-                            ยืนยันการโอนเงินแล้ว
+                            {updatingStatusOrderId === order.id ? 'กำลังอัปเดต...' : 'ยืนยันการโอนเงินแล้ว'}
                           </button>
                         )}
                         {order.status === 'confirmed' && (
                           <button
-                            onClick={() => updateOrderStatus(order.id, 'shipped').catch((err: any) => alert(`อัปเดตสถานะไม่สำเร็จ: ${err.message || err}`))}
-                            className="text-[10px] bg-slate-800 text-white font-semibold py-1 px-2.5 rounded-lg hover:bg-slate-900 cursor-pointer"
+                            disabled={updatingStatusOrderId === order.id}
+                            onClick={() => handleQuickStatusChange(order.id, 'shipped')}
+                            className="text-[10px] bg-slate-800 text-white font-semibold py-1 px-2.5 rounded-lg hover:bg-slate-900 disabled:bg-slate-400 cursor-pointer"
                           >
-                            อัปเดต: ปิดจ๊อบส่งพัสดุ
+                            {updatingStatusOrderId === order.id ? 'กำลังอัปเดต...' : 'อัปเดต: ปิดจ๊อบส่งพัสดุ'}
                           </button>
                         )}
                         {order.status === 'shipped' && (
                           <button
-                            onClick={() => updateOrderStatus(order.id, 'delivered').catch((err: any) => alert(`อัปเดตสถานะไม่สำเร็จ: ${err.message || err}`))}
-                            className="text-[10px] bg-emerald-600 text-white font-semibold py-1 px-2.5 rounded-lg hover:bg-emerald-700 cursor-pointer"
+                            disabled={updatingStatusOrderId === order.id}
+                            onClick={() => handleQuickStatusChange(order.id, 'delivered')}
+                            className="text-[10px] bg-emerald-600 text-white font-semibold py-1 px-2.5 rounded-lg hover:bg-emerald-700 disabled:bg-slate-400 cursor-pointer"
                           >
-                            ยืนยัน: ของส่งถึงมือแล้ว
+                            {updatingStatusOrderId === order.id ? 'กำลังอัปเดต...' : 'ยืนยัน: ของส่งถึงมือแล้ว'}
                           </button>
                         )}
                         {order.status === 'delivered' && (

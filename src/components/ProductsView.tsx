@@ -82,16 +82,28 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   const [savingForm, setSavingForm] = useState<'brand' | 'model' | 'variant' | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
 
+  // Duplicate names fragment the catalog (two "Naturehike" trees, two SKUs of
+  // the same physical colour) — warn before creating a same-name sibling.
+  const isDuplicateName = (existing: { id: string; name: string }[], name: string, editingId: string | null) =>
+    existing.some(item => item.id !== editingId && item.name.trim().toLowerCase() === name.toLowerCase());
+
   // --- FORM HANDLERS ---
   const handleSaveBrand = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!brandName.trim()) return;
+    const name = brandName.trim();
+    if (!name) return;
+    if (isDuplicateName(data.brands, name, brandEditId)) {
+      alert(`มีแบรนด์ชื่อ "${name}" อยู่แล้ว กรุณาใช้ชื่ออื่นหรือแก้ไขแบรนด์เดิม`);
+      return;
+    }
     setSavingForm('brand');
     try {
       if (brandEditId) {
-        await updateBrand(brandEditId, brandName);
+        await updateBrand(brandEditId, name);
+        alert('แก้ไขแบรนด์เรียบร้อยแล้ว');
       } else {
-        await addBrand(brandName);
+        await addBrand(name);
+        alert('เพิ่มแบรนด์เรียบร้อยแล้ว');
       }
       setBrandName('');
       setBrandEditId(null);
@@ -105,22 +117,38 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
   // Pasting a base64 data URI into the image URL field embeds megabytes of
   // image data in the DB row and blew the products payload up to ~38 MB
-  // (statement timeouts). Force those through the upload button instead.
+  // (statement timeouts). Only real links are allowed; uploads go to Storage.
   const isInlineImageData = (value: string) => value.trim().toLowerCase().startsWith('data:');
+  const isInvalidImageUrl = (value: string) => {
+    const trimmed = value.trim();
+    return trimmed !== '' && !/^https?:\/\/\S+$/i.test(trimmed);
+  };
 
   const handleSaveModel = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!modelName.trim() || !modelBrandId) return;
+    const name = modelName.trim();
+    if (!name || !modelBrandId) return;
     if (modelImage && isInlineImageData(modelImage)) {
       alert('ห้ามวางรูปแบบ base64 (data:...) ในช่องลิงก์ กรุณาใช้ปุ่ม "อัปโหลด" แทน ไม่งั้นระบบจะช้ามาก');
+      return;
+    }
+    if (modelImage && isInvalidImageUrl(modelImage)) {
+      alert('ลิงก์รูปภาพไม่ถูกต้อง ต้องขึ้นต้นด้วย http:// หรือ https:// เท่านั้น');
+      return;
+    }
+    const siblingModels = data.models.filter(m => m.brand_id === modelBrandId);
+    if (isDuplicateName(siblingModels, name, modelEditId)) {
+      alert(`แบรนด์นี้มีรุ่นชื่อ "${name}" อยู่แล้ว กรุณาใช้ชื่ออื่นหรือแก้ไขรุ่นเดิม`);
       return;
     }
     setSavingForm('model');
     try {
       if (modelEditId) {
-        await updateModel(modelEditId, modelName, modelBrandId, modelImage);
+        await updateModel(modelEditId, name, modelBrandId, modelImage);
+        alert('แก้ไขรุ่นสินค้าเรียบร้อยแล้ว');
       } else {
-        await addModel(modelBrandId, modelName, modelImage);
+        await addModel(modelBrandId, name, modelImage);
+        alert('เพิ่มรุ่นสินค้าเรียบร้อยแล้ว');
       }
       setModelName('');
       setModelBrandId('');
@@ -136,18 +164,32 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
   const handleSaveVariant = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!variantColor.trim() || !variantModelId) return;
+    const color = variantColor.trim();
+    if (!color || !variantModelId) return;
     if (variantImage && isInlineImageData(variantImage)) {
       alert('ห้ามวางรูปแบบ base64 (data:...) ในช่องลิงก์ กรุณาใช้ปุ่ม "อัปโหลดรูปสีนี้" แทน ไม่งั้นระบบจะช้ามาก');
+      return;
+    }
+    if (variantImage && isInvalidImageUrl(variantImage)) {
+      alert('ลิงก์รูปภาพไม่ถูกต้อง ต้องขึ้นต้นด้วย http:// หรือ https:// เท่านั้น');
+      return;
+    }
+    const siblingColors = data.variants
+      .filter(v => v.model_id === variantModelId)
+      .map(v => ({ id: v.id, name: v.color }));
+    if (isDuplicateName(siblingColors, color, variantEditId)) {
+      alert(`รุ่นนี้มีสี "${color}" อยู่แล้ว กรุณาใช้ชื่อสีอื่นหรือแก้ไขสีเดิม`);
       return;
     }
     const priceNum = variantStandardSalePrice ? parseFloat(variantStandardSalePrice) : 0;
     setSavingForm('variant');
     try {
       if (variantEditId) {
-        await updateVariant(variantEditId, variantColor, variantModelId, priceNum, variantImage);
+        await updateVariant(variantEditId, color, variantModelId, priceNum, variantImage);
+        alert('แก้ไขข้อมูลสีเรียบร้อยแล้ว');
       } else {
-        await addVariant(variantModelId, variantColor, priceNum, variantImage);
+        await addVariant(variantModelId, color, priceNum, variantImage);
+        alert('เพิ่มสีสินค้าเรียบร้อยแล้ว');
       }
       setVariantColor('');
       setVariantModelId('');

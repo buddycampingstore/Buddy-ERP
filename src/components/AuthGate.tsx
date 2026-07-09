@@ -36,6 +36,19 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     };
   }, []);
 
+  // Supabase auth errors come back in English; the rest of the screen is Thai.
+  const toThaiAuthError = (message: string): string => {
+    const lower = message.toLowerCase();
+    if (lower.includes('invalid login credentials')) return 'อีเมลหรือรหัสผ่านไม่ถูกต้อง กรุณาลองใหม่';
+    if (lower.includes('email not confirmed')) return 'อีเมลนี้ยังไม่ได้ยืนยัน กรุณาติดต่อผู้ดูแลระบบ';
+    if (lower.includes('email logins are disabled') || lower.includes('email_provider_disabled')) {
+      return 'ระบบล็อกอินด้วยอีเมลถูกปิดอยู่ กรุณาติดต่อผู้ดูแลระบบ (เปิด Email provider ใน Supabase)';
+    }
+    if (lower.includes('too many requests') || lower.includes('rate limit')) return 'ลองเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่';
+    if (lower.includes('network') || lower.includes('fetch')) return 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่';
+    return `เข้าสู่ระบบไม่สำเร็จ: ${message}`;
+  };
+
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
     setAuthError(null);
@@ -47,7 +60,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     });
 
     if (error) {
-      setAuthError(error.message);
+      setAuthError(toThaiAuthError(error.message));
     }
     setSubmitting(false);
   };
