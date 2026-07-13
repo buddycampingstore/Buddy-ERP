@@ -100,6 +100,7 @@ const mapModel = (model: any): Model => ({
   brand_id: model.brand_id,
   name: model.name,
   image: model.image || undefined,
+  description: model.description || undefined,
   is_active: model.is_active !== false,
   archived_at: model.archived_at || null
 });
@@ -650,10 +651,10 @@ export function useAppData() {
     await loadDashboard();
   };
 
-  const addModel = async (brand_id: string, name: string, image?: string) => {
+  const addModel = async (brand_id: string, name: string, image?: string, description?: string) => {
     const { data: created, error: insertError } = await supabase
       .from('models')
-      .insert({ brand_id, name: name.trim(), image: image || null })
+      .insert({ brand_id, name: name.trim(), image: image || null, description: description?.trim() || null })
       .select()
       .single();
     assertNoError(insertError);
@@ -667,18 +668,19 @@ export function useAppData() {
     return nextModel;
   };
 
-  const updateModel = async (id: string, name: string, brand_id: string, image?: string) => {
+  const updateModel = async (id: string, name: string, brand_id: string, image?: string, description?: string) => {
     const trimmed = name.trim();
     const nextImage = image !== undefined ? image : null;
+    const nextDescription = description?.trim() || null;
     await supabase
       .from('models')
-      .update({ name: trimmed, brand_id, image: nextImage })
+      .update({ name: trimmed, brand_id, image: nextImage, description: nextDescription })
       .eq('id', id)
       .then(({ error }) => assertNoError(error));
     setData(prev => ({
       ...prev,
       models: prev.models
-        .map(m => (m.id === id ? { ...m, name: trimmed, brand_id, image: nextImage || undefined } : m))
+        .map(m => (m.id === id ? { ...m, name: trimmed, brand_id, image: nextImage || undefined, description: nextDescription || undefined } : m))
         .sort((a, b) => a.name.localeCompare(b.name))
     }));
   };

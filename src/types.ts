@@ -15,6 +15,7 @@ export interface Model {
   brand_id: string;
   name: string;
   image?: string; // Optional image data URL or URL
+  description?: string | null; // specs/details shown on the public storefront
   is_active: boolean;
   archived_at?: string | null;
 }

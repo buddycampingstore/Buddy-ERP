@@ -38,8 +38,8 @@ interface ProductsViewProps {
   updateBrand: (id: string, name: string) => Promise<void>;
   archiveBrand: (id: string) => Promise<void>;
   restoreBrand: (id: string) => Promise<void>;
-  addModel: (brand_id: string, name: string, image?: string) => Promise<Model>;
-  updateModel: (id: string, name: string, brand_id: string, image?: string) => Promise<void>;
+  addModel: (brand_id: string, name: string, image?: string, description?: string) => Promise<Model>;
+  updateModel: (id: string, name: string, brand_id: string, image?: string, description?: string) => Promise<void>;
   archiveModel: (id: string) => Promise<void>;
   restoreModel: (id: string) => Promise<void>;
   uploadVariantImage: (file: File) => Promise<string>;
@@ -96,6 +96,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   const [modelName, setModelName] = useState('');
   const [modelBrandId, setModelBrandId] = useState('');
   const [modelImage, setModelImage] = useState('');
+  const [modelDescription, setModelDescription] = useState('');
 
   // --- VARIANT FORM STATE ---
   const [showVariantForm, setShowVariantForm] = useState(false);
@@ -169,15 +170,16 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     setSavingForm('model');
     try {
       if (modelEditId) {
-        await updateModel(modelEditId, name, modelBrandId, modelImage);
+        await updateModel(modelEditId, name, modelBrandId, modelImage, modelDescription);
         alert('แก้ไขรุ่นสินค้าเรียบร้อยแล้ว');
       } else {
-        await addModel(modelBrandId, name, modelImage);
+        await addModel(modelBrandId, name, modelImage, modelDescription);
         alert('เพิ่มรุ่นสินค้าเรียบร้อยแล้ว');
       }
       setModelName('');
       setModelBrandId('');
       setModelImage('');
+      setModelDescription('');
       setModelEditId(null);
       setShowModelForm(false);
     } catch (err: any) {
@@ -530,6 +532,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     setModelName('');
     setModelBrandId(brandId);
     setModelImage('');
+    setModelDescription('');
     setShowModelForm(true);
   };
 
@@ -801,6 +804,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                                     setModelName(group.modelName);
                                     setModelBrandId(group.brandId);
                                     setModelImage(group.modelImage || '');
+                                    setModelDescription(modelById.get(group.modelId)?.description || '');
                                     setShowModelForm(true);
                                   }}
                                   className="text-[10px] font-bold text-slate-500 hover:text-emerald-700 bg-white border border-slate-200 rounded-lg px-2 py-1"
@@ -1428,6 +1432,18 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                   value={modelName}
                   onChange={(e) => setModelName(e.target.value)}
                   className="w-full text-xs p-3 bg-slate-50 outline-hidden border border-slate-200 rounded-xl focus:border-emerald-700 focus:bg-white text-slate-800"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">
+                  สเปค / รายละเอียดสินค้า <span className="text-slate-400 normal-case font-normal">(ไม่บังคับ · แสดงบนหน้าร้านออนไลน์)</span>
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="เช่น วัสดุอลูมิเนียม รับน้ำหนัก 120 กก. น้ำหนักเก้าอี้ 1.1 กก. พับเก็บได้ พร้อมถุงพกพา"
+                  value={modelDescription}
+                  onChange={(e) => setModelDescription(e.target.value)}
+                  className="w-full text-xs p-3 bg-slate-50 outline-hidden border border-slate-200 rounded-xl focus:border-emerald-700 focus:bg-white text-slate-800 resize-y"
                 />
               </div>
               <div className="flex gap-2 justify-end pt-2">
