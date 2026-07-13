@@ -1,0 +1,61 @@
+/* ── Buddy Camp storefront theme ─────────────────────────────────────────
+   Scoped helpers for the public shop. Brand colours live as Tailwind tokens
+   in src/index.css (@theme) so components use clean utilities (bg-bark, …);
+   this file only carries the fonts and the few bespoke effects. The ERP
+   back-office shares src/index.css but references none of these classes. */
+
+@import url('https://fonts.googleapis.com/css2?family=Chonburi&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap');
+
+.sf {
+  font-family: 'IBM Plex Sans Thai', 'Noto Sans Thai', system-ui, sans-serif;
+  color: #2b1d0e;
+  background-color: #fdfdfd;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Display face — brand wordmark, hero headline, section titles only. */
+.sf-display {
+  font-family: 'Chonburi', 'IBM Plex Sans Thai', Georgia, serif;
+  font-weight: 400;
+  letter-spacing: 0.005em;
+}
+
+/* Trail-blaze eyebrow: a small waymark notch, not decoration. */
+.sf-eyebrow { position: relative; padding-left: 1rem; }
+.sf-eyebrow::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 0.5rem;
+  height: 0.5rem;
+  transform: translateY(-50%) rotate(45deg);
+  background: #9e6c3b;
+  border-radius: 1px;
+}
+
+/* Skeleton shimmer for the loading grid. */
+@keyframes sf-shimmer {
+  0% { background-position: -180% 0; }
+  100% { background-position: 180% 0; }
+}
+.sf-shimmer {
+  background: linear-gradient(100deg, #f3ebdf 30%, #faf5ec 50%, #f3ebdf 70%);
+  background-size: 200% 100%;
+  animation: sf-shimmer 1.4s ease-in-out infinite;
+}
+
+/* Hide scrollbar on the brand-chip rail without losing scrollability. */
+.sf-no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.sf-no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Visible, on-brand keyboard focus everywhere in the storefront. */
+.sf :focus-visible {
+  outline: 2px solid #9e6c3b;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sf-shimmer { animation: none; }
+}
