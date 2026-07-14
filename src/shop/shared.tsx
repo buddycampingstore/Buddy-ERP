@@ -7,7 +7,7 @@ import { motion } from 'motion/react';
 export const STORE = {
   name: 'Buddy Camp',
   tagline: 'อุปกรณ์แคมป์ปิ้งพร้อมส่ง',
-  heroLead: 'ของครบ พร้อมออกเดินทาง',
+  heroLead: 'พร้อมออกเดินทางได้',
   heroSub: 'เลือกดูสินค้าและราคาล่าสุด เจอที่ถูกใจแล้วทักเพจสั่งได้เลย',
   facebookUrl: 'https://www.facebook.com/buddycampingstore',
 };
