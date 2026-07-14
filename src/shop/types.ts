@@ -30,3 +30,16 @@ export interface StorefrontCatalog {
   models: PublicModel[];
   variants: PublicVariant[];
 }
+
+// One storefront product card: a model with its brand resolved and all of its
+// colour variants grouped together (built client-side in StorefrontPage).
+export interface ModelCard {
+  modelId: string;
+  modelName: string;
+  brandId: string;
+  brandName: string;
+  description?: string;
+  image?: string;
+  variants: PublicVariant[];
+  totalStock: number;
+}

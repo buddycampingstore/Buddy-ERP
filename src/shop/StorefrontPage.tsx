@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Search, X, Image as ImageIcon, Facebook, PackageX, RefreshCw,
-  Tent, ArrowRight, Truck, MessageCircle,
+  Search, X, Image as ImageIcon, PackageX, RefreshCw,
+  Tent, Truck, MessageCircle,
 } from 'lucide-react';
 import {
   motion, AnimatePresence, useReducedMotion, useScroll, useMotionValueEvent,
@@ -9,46 +9,9 @@ import {
 import logoImg from '../assets/images/logo_1782269852938.jpg';
 import { isSupabaseConfigured } from './supabaseClient';
 import { useStorefrontCatalog } from './useStorefrontCatalog';
-import { PublicVariant } from './types';
-
-// --- STORE CONTACT CONFIG ---
-// TODO: แทนที่ด้วยข้อมูลจริงของร้าน (ลิงก์เพจ Facebook ที่ถูกต้อง)
-const STORE = {
-  name: 'Buddy Camp',
-  tagline: 'อุปกรณ์แคมป์ปิ้งพร้อมส่ง',
-  heroLead: 'ของครบ พร้อมออกเดินทาง',
-  heroSub: 'เลือกดูสินค้าและราคาล่าสุด เจอที่ถูกใจแล้วทักเพจสั่งได้เลย',
-  facebookUrl: 'https://www.facebook.com/buddycampingstore',
-};
-
-// Same colour mapping as the ERP catalog (ProductsView.getDynamicColorStyles),
-// copied here to keep the storefront fully decoupled from ERP components.
-const getDynamicColorStyles = (colorName: string) => {
-  const low = colorName.toLowerCase();
-  if (low.includes('khaki') || low.includes('กากี')) return 'bg-[#C3B091]';
-  if (low.includes('cream') || low.includes('ครีม') || low.includes('ขาว')) return 'bg-[#FDFBF7] border border-black/15';
-  if (low.includes('black') || low.includes('ดำ')) return 'bg-[#1C1C1E]';
-  if (low.includes('green') || low.includes('เขียว') || low.includes('olive')) return 'bg-[#556B2F]';
-  if (low.includes('red') || low.includes('แดง')) return 'bg-[#C0392B]';
-  if (low.includes('blue') || low.includes('น้ำเงิน') || low.includes('ฟ้า')) return 'bg-[#2980B9]';
-  if (low.includes('gray') || low.includes('เทา')) return 'bg-[#7F8C8D]';
-  if (low.includes('brown') || low.includes('น้ำตาล')) return 'bg-[#8B4513]';
-  if (low.includes('yellow') || low.includes('เหลือง')) return 'bg-[#F1C40F]';
-  return 'bg-linear-to-tr from-[#d8c7ad] to-caramel';
-};
-
-const formatBaht = (value: number) => `฿${value.toLocaleString('th-TH', { maximumFractionDigits: 0 })}`;
-
-interface ModelCard {
-  modelId: string;
-  modelName: string;
-  brandId: string;
-  brandName: string;
-  description?: string;
-  image?: string;
-  variants: PublicVariant[];
-  totalStock: number;
-}
+import { ModelCard } from './types';
+import { STORE, FacebookButton, formatBaht, getDynamicColorStyles } from './shared';
+import { ProductDetailModal } from './ProductDetailModal';
 
 /* ── Signature element ────────────────────────────────────────────────────
    Topographic contour lines — a nod to trail maps / terrain, the world these
@@ -80,27 +43,10 @@ const ContourField: React.FC<{ className?: string }> = ({ className = '' }) => (
   </svg>
 );
 
-const FacebookButton: React.FC<{ className?: string; onDark?: boolean }> = ({ className = '', onDark = false }) => (
-  <motion.a
-    href={STORE.facebookUrl}
-    target="_blank"
-    rel="noopener noreferrer"
-    whileHover={{ y: -2 }}
-    whileTap={{ scale: 0.97 }}
-    transition={{ type: 'spring', stiffness: 400, damping: 22 }}
-    className={`group inline-flex items-center justify-center gap-2 font-semibold rounded-full transition-colors ${
-      onDark
-        ? 'bg-paper text-bark hover:bg-white'
-        : 'bg-copper text-white hover:bg-bark2 shadow-sm'
-    } ${className}`}
-  >
-    <Facebook className="w-4 h-4" />
-    ทักเพจเพื่อสั่งซื้อ
-    <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-  </motion.a>
-);
-
-const ProductCard: React.FC<{ card: ModelCard }> = ({ card }) => {
+const ProductCard: React.FC<{
+  card: ModelCard;
+  onOpenDetail: (modelId: string, variantId?: string) => void;
+}> = ({ card, onOpenDetail }) => {
   const reduce = useReducedMotion();
 
   // Default the selected colour to the first one still in stock, so customers
@@ -113,6 +59,8 @@ const ProductCard: React.FC<{ card: ModelCard }> = ({ card }) => {
   const selectedOut = !selected || selected.qty_in_stock === 0;
   const hasMultipleColors = card.variants.length > 1;
 
+  const openDetail = () => onOpenDetail(card.modelId, selected?.id);
+
   return (
     <motion.article
       variants={{ hidden: { opacity: 0, y: reduce ? 0 : 22 }, show: { opacity: 1, y: 0 } }}
@@ -120,8 +68,13 @@ const ProductCard: React.FC<{ card: ModelCard }> = ({ card }) => {
       transition={{ type: 'spring', stiffness: 320, damping: 26 }}
       className="group relative flex flex-col rounded-3xl bg-cream border border-bark/10 overflow-hidden shadow-[0_1px_2px_rgba(54,36,15,0.05)] hover:shadow-[0_18px_40px_-20px_rgba(54,36,15,0.45)] hover:border-bark/15 transition-shadow"
     >
-      {/* Image — cross-fades when the customer switches colour */}
-      <div className="relative w-full aspect-square bg-panel overflow-hidden">
+      {/* Image — click to open the detail view; cross-fades on colour switch */}
+      <button
+        type="button"
+        onClick={openDetail}
+        aria-label={`ดูรายละเอียด ${card.modelName}`}
+        className="relative w-full aspect-square bg-panel overflow-hidden cursor-pointer block"
+      >
         {displayImage ? (
           <AnimatePresence initial={false}>
             <motion.img
@@ -150,7 +103,12 @@ const ProductCard: React.FC<{ card: ModelCard }> = ({ card }) => {
             <PackageX className="w-3 h-3" /> สินค้าหมด
           </span>
         )}
-      </div>
+
+        {/* Hover hint: this card opens a detail view */}
+        <span className="absolute bottom-3 right-3 bg-bark/70 text-paper text-[11px] font-medium px-2.5 py-1 rounded-full backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+          ดูรายละเอียด
+        </span>
+      </button>
 
       {/* Body */}
       <div className="p-4 flex flex-col flex-1">
@@ -159,7 +117,15 @@ const ProductCard: React.FC<{ card: ModelCard }> = ({ card }) => {
             {card.brandName}
           </span>
         )}
-        <h3 className="sf-display text-[17px] leading-snug text-bark mt-1">{card.modelName}</h3>
+        <h3 className="mt-1">
+          <button
+            type="button"
+            onClick={openDetail}
+            className="sf-display text-[17px] leading-snug text-bark hover:text-copper transition-colors text-left cursor-pointer"
+          >
+            {card.modelName}
+          </button>
+        </h3>
         {card.description && (
           <p className="text-xs text-muted mt-1.5 whitespace-pre-line leading-relaxed line-clamp-2">
             {card.description}
@@ -225,16 +191,50 @@ const ProductCard: React.FC<{ card: ModelCard }> = ({ card }) => {
   );
 };
 
+// Detail-view deep link: shop.html#p=<modelId>
+const hashModelId = () => {
+  const m = window.location.hash.match(/^#p=(.+)$/);
+  return m ? decodeURIComponent(m[1]) : null;
+};
+
 export const StorefrontPage: React.FC = () => {
   const { brands, models, variants, loading, error, retry } = useStorefrontCatalog();
   const reduce = useReducedMotion();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBrandId, setSelectedBrandId] = useState<string>('all');
+  const [detail, setDetail] = useState<{ modelId: string; variantId?: string } | null>(null);
 
   // Condense the sticky bar (reveal the compact logo) once the hero scrolls away.
   const { scrollY } = useScroll();
   const [condensed, setCondensed] = useState(false);
   useMotionValueEvent(scrollY, 'change', v => setCondensed(v > 180));
+
+  // Opening pushes a #p=<modelId> history entry so the browser back button
+  // closes the detail view and product links are shareable.
+  const openDetail = useCallback((modelId: string, variantId?: string) => {
+    setDetail({ modelId, variantId });
+    if (hashModelId() !== modelId) {
+      history.pushState(null, '', `#p=${encodeURIComponent(modelId)}`);
+    }
+  }, []);
+
+  const closeDetail = useCallback(() => {
+    setDetail(null);
+    // Drop the #p= entry we pushed so "back" afterwards leaves the page,
+    // not reopens the modal.
+    if (hashModelId()) history.back();
+  }, []);
+
+  // Browser back/forward drives the modal state.
+  useEffect(() => {
+    const onPop = () => {
+      const id = hashModelId();
+      if (!id) setDetail(null);
+      else setDetail(d => (d?.modelId === id ? d : { modelId: id }));
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   const brandById = useMemo(() => new Map(brands.map(b => [b.id, b])), [brands]);
   const modelById = useMemo(() => new Map(models.map(m => [m.id, m])), [models]);
@@ -275,6 +275,16 @@ export const StorefrontPage: React.FC = () => {
     });
   }, [variants, modelById, brandById]);
 
+  // Shared links: once the catalog is loaded, honour a #p=<modelId> hash that
+  // was present on page load.
+  useEffect(() => {
+    if (loading) return;
+    const id = hashModelId();
+    if (id && modelCards.some(c => c.modelId === id)) {
+      setDetail(d => d || { modelId: id });
+    }
+  }, [loading, modelCards]);
+
   // Only show brand chips for brands that actually have a model with variants.
   const brandsWithProducts = useMemo(() => {
     const ids = new Set(modelCards.map(c => c.brandId));
@@ -294,6 +304,8 @@ export const StorefrontPage: React.FC = () => {
       );
     });
   }, [modelCards, searchQuery, selectedBrandId]);
+
+  const detailCard = detail ? modelCards.find(c => c.modelId === detail.modelId) : undefined;
 
   const hasFilter = searchQuery.trim() !== '' || selectedBrandId !== 'all';
   const chipBase = 'px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer border';
@@ -523,7 +535,7 @@ export const StorefrontPage: React.FC = () => {
               className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4"
             >
               {filteredCards.map(card => (
-                <ProductCard key={card.modelId} card={card} />
+                <ProductCard key={card.modelId} card={card} onOpenDetail={openDetail} />
               ))}
             </motion.div>
           </>
@@ -544,6 +556,18 @@ export const StorefrontPage: React.FC = () => {
           <p className="text-[11px] text-tan pt-4">© {STORE.name}</p>
         </div>
       </footer>
+
+      {/* ── Product detail modal ─────────────────────────────────────────── */}
+      <AnimatePresence>
+        {detail && detailCard && (
+          <ProductDetailModal
+            key={detailCard.modelId}
+            card={detailCard}
+            initialVariantId={detail.variantId}
+            onClose={closeDetail}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
