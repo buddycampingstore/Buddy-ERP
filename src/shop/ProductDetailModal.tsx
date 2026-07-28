@@ -1,14 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Image as ImageIcon, PackageX } from 'lucide-react';
+import { X, Image as ImageIcon, PackageX, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
-import { FacebookButton, formatBaht, colorHex, tintFor, stockBadge } from './shared';
+import { FacebookButton, formatBaht, getDynamicColorStyles } from './shared';
 import { ModelCard } from './types';
 
-/* Product detail sheet: slides up from the bottom of the 440px column and
-   keeps the CTA pinned below the scroll area, so "ทักเพจ" is reachable no
-   matter how long the description runs. Closes via the X button, backdrop
-   click, Escape, or browser back (hash-driven — the parent owns open/close
-   state and history). */
+/* Product detail overlay: bottom sheet on mobile, centred two-column dialog
+   on ≥sm. Closes via the X button, backdrop click, Escape, or browser back
+   (hash-driven — the parent owns open/close state and history). */
 export const ProductDetailModal: React.FC<{
   card: ModelCard;
   initialVariantId?: string;
@@ -26,7 +24,7 @@ export const ProductDetailModal: React.FC<{
 
   const displayImage = selected?.image || card.image;
   const selectedOut = !selected || selected.qty_in_stock === 0;
-  const badge = stockBadge(card.totalStock, selectedOut);
+  const pricesVary = new Set(card.variants.map(v => v.standard_sale_price)).size > 1;
 
   // Focus the close button on open, restore focus on close; Escape closes;
   // lock body scroll while the sheet is up.
@@ -46,9 +44,22 @@ export const ProductDetailModal: React.FC<{
     };
   }, [onClose]);
 
+  // Mobile gets a slide-up sheet, desktop a gentle scale-in; reduced motion
+  // collapses both to a plain fade.
+  const isDesktop = typeof window !== 'undefined' && window.matchMedia('(min-width: 640px)').matches;
+  const panelMotion = reduce
+    ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }
+    : isDesktop
+      ? {
+          initial: { opacity: 0, scale: 0.96, y: 16 },
+          animate: { opacity: 1, scale: 1, y: 0 },
+          exit: { opacity: 0, scale: 0.97, y: 10 },
+        }
+      : { initial: { y: '100%' }, animate: { y: 0 }, exit: { y: '100%' } };
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-label={card.modelName}
@@ -59,135 +70,139 @@ export const ProductDetailModal: React.FC<{
         exit={{ opacity: 0 }}
         transition={{ duration: 0.2 }}
         onClick={onClose}
-        className="absolute inset-0 bg-[#2a1b0b]/60 backdrop-blur-[3px]"
+        className="absolute inset-0 bg-bark/60 backdrop-blur-sm"
       />
 
       <motion.div
-        initial={reduce ? { opacity: 0 } : { y: '100%' }}
-        animate={reduce ? { opacity: 1 } : { y: 0 }}
-        exit={reduce ? { opacity: 0 } : { y: '100%' }}
-        transition={reduce ? { duration: 0.15 } : { duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-        className="relative flex w-full max-w-[440px] max-h-[94dvh] flex-col overflow-hidden rounded-t-[28px] bg-paper shadow-2xl"
+        {...panelMotion}
+        transition={reduce ? { duration: 0.15 } : { type: 'spring', stiffness: 380, damping: 34 }}
+        className="relative w-full sm:max-w-3xl bg-paper rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[92dvh] sm:max-h-[85vh] flex flex-col"
       >
-        <div className="flex-1 overflow-y-auto overscroll-contain">
-          {/* Image — cross-fades when switching colour, over a tinted backdrop */}
-          <div className="relative w-full aspect-[50/39] bg-panel">
-            <div
-              className="absolute inset-0 transition-[background] duration-[350ms] ease-out"
-              style={{ background: tintFor(selected?.color || '') }}
-            />
-            {displayImage ? (
-              <AnimatePresence initial={false}>
-                <motion.img
-                  key={displayImage}
-                  src={displayImage}
-                  alt={`${card.modelName} ${selected?.color || ''}`}
-                  referrerPolicy="no-referrer"
-                  initial={{ opacity: 0, scale: reduce ? 1 : 1.03 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.3, ease: 'easeOut' }}
-                  className={`absolute inset-0 w-full h-full object-cover ${selectedOut ? 'grayscale-[35%] opacity-70' : ''}`}
-                />
-              </AnimatePresence>
-            ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-ink/35">
-                <ImageIcon className="w-8 h-8" />
-                <span className="text-xs tracking-[0.08em]">รูปสินค้า</span>
-              </div>
-            )}
+        {/* Grab handle (mobile sheet affordance) */}
+        <div className="sm:hidden absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-bark/15 z-10" />
 
-            <span
-              className={`absolute top-3.5 left-3.5 inline-flex items-center gap-1.5 h-[30px] px-3.5 rounded-full text-[13px] font-bold shadow-[0_2px_8px_rgba(54,36,15,0.18)] ${badge.className}`}
-            >
-              {badge.soldOut && <PackageX className="w-3.5 h-3.5" />}
-              {badge.label}
-            </span>
+        <button
+          ref={closeRef}
+          type="button"
+          onClick={onClose}
+          aria-label="ปิดหน้าต่างรายละเอียดสินค้า"
+          className="absolute top-3 right-3 z-10 w-9 h-9 rounded-full bg-paper/85 backdrop-blur border border-bark/10 text-muted hover:text-bark hover:border-bark/25 flex items-center justify-center cursor-pointer transition-colors"
+        >
+          <X className="w-4.5 h-4.5" />
+        </button>
 
-            <button
-              ref={closeRef}
-              type="button"
-              onClick={onClose}
-              aria-label="ปิดหน้าต่างรายละเอียดสินค้า"
-              className="absolute top-3.5 right-3.5 grid h-11 w-11 place-items-center rounded-full border border-bark/12 bg-paper/92 text-bark backdrop-blur hover:bg-paper hover:border-bark/25 cursor-pointer transition-colors"
-            >
-              <X className="w-[18px] h-[18px]" />
-            </button>
-          </div>
-
-          <div className="px-5 pt-5 pb-6">
-            {card.brandName && (
-              <p className="text-xs font-bold text-copper uppercase tracking-[0.12em]">{card.brandName}</p>
-            )}
-            <h2 className="sf-display mt-1.5 text-[26px] leading-[1.35] text-bark">{card.modelName}</h2>
-
-            <div className="mt-3.5 flex items-end gap-3">
-              <span className="text-[34px] font-bold leading-none text-bark tabular-nums">
-                {selected && selected.standard_sale_price > 0 ? formatBaht(selected.standard_sale_price) : 'สอบถามราคา'}
-              </span>
-              <span className={`pb-1 text-sm ${selectedOut ? 'text-clay' : 'text-stone'}`}>
-                {selectedOut ? 'สีนี้หมดชั่วคราว' : `เหลือ ${selected!.qty_in_stock} ชิ้น`}
-              </span>
+        <div className="overflow-y-auto overscroll-contain">
+          <div className="grid sm:grid-cols-2">
+            {/* Image — cross-fades when switching colour */}
+            <div className="relative w-full aspect-square bg-panel overflow-hidden">
+              {displayImage ? (
+                <AnimatePresence initial={false}>
+                  <motion.img
+                    key={displayImage}
+                    src={displayImage}
+                    alt={`${card.modelName} ${selected?.color || ''}`}
+                    referrerPolicy="no-referrer"
+                    initial={{ opacity: 0, scale: reduce ? 1 : 1.03 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.3, ease: 'easeOut' }}
+                    className={`absolute inset-0 w-full h-full object-cover ${selectedOut ? 'grayscale-[35%] opacity-70' : ''}`}
+                  />
+                </AnimatePresence>
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <ImageIcon className="w-12 h-12 text-tan" />
+                </div>
+              )}
+              {selectedOut && (
+                <span className="absolute top-3 left-3 bg-clay text-white text-[11px] font-semibold px-2.5 py-1 rounded-full shadow-sm flex items-center gap-1">
+                  <PackageX className="w-3 h-3" /> สินค้าหมด
+                </span>
+              )}
             </div>
 
-            {card.description && (
-              <p className="mt-4 text-[15px] leading-[1.75] text-bister whitespace-pre-line text-pretty">
-                {card.description}
-              </p>
-            )}
+            {/* Details */}
+            <div className="p-5 sm:p-7 flex flex-col">
+              {card.brandName && (
+                <span className="self-start text-[11px] font-semibold text-copper uppercase tracking-[0.12em]">
+                  {card.brandName}
+                </span>
+              )}
+              <h2 className="sf-display text-2xl leading-snug text-bark mt-1">{card.modelName}</h2>
 
-            {/* Colour selector — full-width rows here (not the card's pill
-                rail) so every colour shows its own price and stock. */}
-            <div className="mt-5 border-t border-bark/10 pt-4">
-              <p className="mb-2.5 text-sm text-muted">
-                {card.variants.length > 1 ? 'เลือกสี' : 'สี'}
-                {selected && <> — <span className="font-bold text-bark">{selected.color}</span></>}
-              </p>
-              <div className="flex flex-col gap-2">
-                {card.variants.map(v => {
-                  const vOut = v.qty_in_stock === 0;
-                  const isSelected = v.id === selected?.id;
-                  return (
-                    <button
-                      key={v.id}
-                      type="button"
-                      onClick={() => setSelectedId(v.id)}
-                      aria-pressed={isSelected}
-                      className={`flex h-[58px] w-full items-center gap-3 rounded-2xl border-2 px-4 text-left text-[15px] font-medium cursor-pointer transition-colors ${
-                        isSelected
-                          ? 'bg-shell border-copper text-bark'
-                          : 'bg-paper border-bark/12 text-bister hover:border-tan'
-                      } ${vOut ? 'opacity-55' : ''}`}
-                    >
-                      <span
-                        className="h-[30px] w-[30px] shrink-0 rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.12)]"
-                        style={{ background: colorHex(v.color) }}
-                      />
-                      <span className="flex-1 truncate">{v.color}</span>
-                      <span className="font-bold text-bark tabular-nums">
-                        {v.standard_sale_price > 0 ? formatBaht(v.standard_sale_price) : 'สอบถาม'}
-                      </span>
-                      <span className={`text-[13px] whitespace-nowrap ${vOut ? 'text-clay' : 'text-stone'}`}>
-                        {vOut ? 'หมด' : `เหลือ ${v.qty_in_stock}`}
-                      </span>
-                    </button>
-                  );
-                })}
+              <div className="mt-3 flex items-end gap-3">
+                <span className="text-3xl font-bold text-bark tabular-nums">
+                  {selected && selected.standard_sale_price > 0 ? formatBaht(selected.standard_sale_price) : 'สอบถามราคา'}
+                </span>
+                {selectedOut ? (
+                  <span className="text-sm font-semibold text-clay pb-1">สินค้าหมด</span>
+                ) : (
+                  <span className="text-sm font-medium text-muted pb-1">
+                    เหลือ <span className="font-bold text-copper">{selected!.qty_in_stock}</span> ชิ้น
+                  </span>
+                )}
+              </div>
+
+              {card.description && (
+                <p className="text-sm text-muted mt-4 whitespace-pre-line leading-relaxed">
+                  {card.description}
+                </p>
+              )}
+
+              {/* Colour selector — larger than on the card, with per-colour
+                  price when prices differ between colours */}
+              <div className="mt-5 border-t border-bark/10 pt-4">
+                <p className="text-[11px] font-semibold text-muted uppercase tracking-[0.1em] mb-2.5">
+                  เลือกสี
+                  {selected && <span className="normal-case tracking-normal text-bark ml-1.5">· {selected.color}</span>}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {card.variants.map(v => {
+                    const vOut = v.qty_in_stock === 0;
+                    const isSelected = v.id === selected?.id;
+                    return (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => setSelectedId(v.id)}
+                        aria-pressed={isSelected}
+                        className={`relative flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full border text-xs font-medium transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'border-transparent text-bark'
+                            : 'border-bark/10 text-muted hover:border-tan'
+                        } ${vOut ? 'opacity-50' : ''}`}
+                      >
+                        {isSelected && (
+                          <motion.span
+                            layoutId={`detail-swatch-${card.modelId}`}
+                            transition={{ type: 'spring', stiffness: 500, damping: 34 }}
+                            className="absolute inset-0 rounded-full bg-panel ring-[1.5px] ring-copper"
+                          />
+                        )}
+                        <span className={`relative w-5 h-5 rounded-full shadow-inner shrink-0 ${getDynamicColorStyles(v.color)}`} />
+                        <span className="relative">{v.color}</span>
+                        {pricesVary && v.standard_sale_price > 0 && (
+                          <span className="relative text-copper font-semibold tabular-nums">{formatBaht(v.standard_sale_price)}</span>
+                        )}
+                        <span className={`relative whitespace-nowrap ${vOut ? 'text-clay' : 'text-tan'}`}>
+                          {vOut ? 'หมด' : `เหลือ ${v.qty_in_stock}`}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* CTA */}
+              <div className="mt-6 sm:mt-auto sm:pt-6 space-y-2 pb-1">
+                <FacebookButton className="w-full text-sm py-3" />
+                <p className="text-[11px] text-muted text-center flex items-center justify-center gap-1">
+                  <MessageCircle className="w-3 h-3 text-tan" />
+                  ทักพร้อมแจ้งรุ่น "{card.modelName}" และสีที่ต้องการได้เลย
+                </p>
               </div>
             </div>
           </div>
-        </div>
-
-        {/* Pinned CTA */}
-        <div className="border-t border-bark/10 bg-paper px-5 pt-3.5 pb-5">
-          <FacebookButton
-            className="h-14 w-full text-[17px]"
-            muted={selectedOut}
-            label={selectedOut ? 'ถามสีอื่น' : 'ทักเพจสั่งสีนี้'}
-          />
-          <p className="mt-2.5 text-center text-[13px] leading-[1.6] text-muted">
-            แจ้งรุ่นกับสีที่เลือกไว้ให้เราได้เลย เดี๋ยวเช็กของแล้วสรุปยอดให้
-          </p>
         </div>
       </motion.div>
     </div>
