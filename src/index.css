@@ -5,7 +5,7 @@
   --font-sans: "Noto Sans Thai", "Inter", system-ui, -apple-system, sans-serif;
 
   /* Buddy Camp storefront brand palette (used only by the public shop, but
-     registered here so Tailwind emits clean, type-safe utilities: bg-bark,
+     registered here so Tailwind emitsd clean, type-safe utilities: bg-bark,
      text-copper, border-cream, etc.). Additive — no ERP class references it. */
   --color-paper: #fdfdfd;
   --color-cream: #fbf8f3;
@@ -21,4 +21,3 @@
 
   --font-display: "Chonburi", "IBM Plex Sans Thai", Georgia, serif;
 }
-;
