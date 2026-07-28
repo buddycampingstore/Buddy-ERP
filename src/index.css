@@ -8,16 +8,21 @@
      registered here so Tailwind emits clean, type-safe utilities: bg-bark,
      text-copper, border-cream, etc.). Additive — no ERP class references it. */
   --color-paper: #fdfdfd;
-  --color-cream: #fbf8f3;
+  --color-cream: #faf5ec;
   --color-panel: #f3ebdf;
+  --color-sand: #e7dccb;
+  --color-shell: #f6ece0;
   --color-bark: #36240f;
   --color-bark2: #4a3316;
-  --color-caramel: #a67648;
   --color-copper: #9e6c3b;
-  --color-tan: #ac865f;
+  --color-tan: #a98c66;
+  --color-dune: #d9bc95;
+  --color-stone: #8a7355;
+  --color-bister: #52412c;
   --color-ink: #2b1d0e;
   --color-muted: #6f5c46;
-  --color-clay: #b4542c;
+  --color-clay: #b4472e;
+  --color-forest: #3f6b3a;
 
   --font-display: "Chonburi", "IBM Plex Sans Thai", Georgia, serif;
 }
