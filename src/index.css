@@ -18,6 +18,12 @@
   --color-ink: #2b1d0e;
   --color-muted: #6f5c46;
   --color-clay: #b4542c;
+  /* Light warm tones that only read on the dark bark surfaces: dune draws the
+     drifting contour lines, sand the supporting text over them. */
+  --color-dune: #c3a179;
+  --color-sand: #d8bf9d;
+  /* In-stock signal — the one non-earth hue, reserved for "พร้อมส่ง". */
+  --color-moss: #8fbf5a;
 
   --font-display: "Chonburi", "IBM Plex Sans Thai", Georgia, serif;
 }

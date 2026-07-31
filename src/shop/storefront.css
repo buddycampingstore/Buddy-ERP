@@ -45,9 +45,23 @@
   animation: sf-shimmer 1.4s ease-in-out infinite;
 }
 
-/* Hide scrollbar on the brand-chip rail without losing scrollability. */
-.sf-no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
-.sf-no-scrollbar::-webkit-scrollbar { display: none; }
+/* ── Ambient motion ──────────────────────────────────────────────────────
+   Loops that never react to state — the drifting contour field, the trust
+   marquee, the empty-state beacon — live here rather than in motion/react:
+   they can run on the compositor and cost no renders. State-driven motion
+   (cards, sheet, toast, FAB) stays with motion/react.
+
+   The drift distances are two full wave periods (2 × 160px), and contour
+   paths are drawn wider than the viewBox, so the loop has no visible seam. */
+@keyframes sf-drift { from { transform: translateX(0); } to { transform: translateX(-320px); } }
+@keyframes sf-drift-slow { from { transform: translateX(0); } to { transform: translateX(320px); } }
+@keyframes sf-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes sf-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+
+.sf-drift { animation: sf-drift 34s linear infinite; }
+.sf-drift-slow { animation: sf-drift-slow 52s linear infinite; }
+.sf-marquee { animation: sf-marquee 30s linear infinite; }
+.sf-bob { animation: sf-bob 3.2s ease-in-out infinite; }
 
 /* Visible, on-brand keyboard focus everywhere in the storefront. */
 .sf :focus-visible {
@@ -57,5 +71,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sf-shimmer { animation: none; }
+  .sf-shimmer,
+  .sf-drift,
+  .sf-drift-slow,
+  .sf-marquee,
+  .sf-bob { animation: none; }
 }
