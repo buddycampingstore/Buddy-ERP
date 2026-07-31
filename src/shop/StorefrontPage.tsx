@@ -1,185 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Search, X, RefreshCw, Tent, Truck, MessageCircle, Heart } from 'lucide-react';
 import {
-  Search, X, Image as ImageIcon, PackageX, RefreshCw,
-  Tent, Truck, MessageCircle,
-} from 'lucide-react';
-import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
+  motion, AnimatePresence, useReducedMotion, useScroll, useMotionValueEvent,
+} from 'motion/react';
 import logoImg from '../assets/images/logo_1782269852938.jpg';
 import { isSupabaseConfigured } from './supabaseClient';
 import { useStorefrontCatalog } from './useStorefrontCatalog';
+import { useFavorites } from './useFavorites';
 import { ModelCard } from './types';
-import {
-  STORE, FacebookButton, formatBaht, colorHex, tintFor, stockBadge,
-} from './shared';
+import { STORE, FacebookButton, chipClass } from './shared';
+import { ContourField, ScrollProgress, TrustMarquee, ScrollTopButton, Toast } from './chrome';
+import { ProductCard } from './ProductCard';
 import { ProductDetailModal } from './ProductDetailModal';
-
-/* ── Layout note ───────────────────────────────────────────────────────────
-   The shop is one 440px paper column centred on a sand surround. Nearly all
-   traffic arrives from the Facebook page on a phone, so the phone width *is*
-   the design: full-bleed cards, 46–56px touch targets, one product per row,
-   and no second breakpoint to keep in sync. */
-
-const ProductCard: React.FC<{
-  card: ModelCard;
-  onOpenDetail: (modelId: string, variantId?: string) => void;
-}> = ({ card, onOpenDetail }) => {
-  const reduce = useReducedMotion();
-
-  // Default the selected colour to the first one still in stock, so customers
-  // land on something they can actually buy; fall back to the first colour.
-  const defaultVariant = card.variants.find(v => v.qty_in_stock > 0) || card.variants[0];
-  const [selectedId, setSelectedId] = useState(defaultVariant?.id);
-  const selected = card.variants.find(v => v.id === selectedId) || defaultVariant;
-
-  const displayImage = selected?.image || card.image;
-  const selectedOut = !selected || selected.qty_in_stock === 0;
-  const badge = stockBadge(card.totalStock, selectedOut);
-
-  const openDetail = () => onOpenDetail(card.modelId, selected?.id);
-
-  return (
-    <motion.article
-      variants={{ hidden: { opacity: 0, y: reduce ? 0 : 14 }, show: { opacity: 1, y: 0 } }}
-      transition={{ duration: 0.45, ease: 'easeOut' }}
-      className="rounded-[26px] bg-paper border border-bark/10 overflow-hidden shadow-[0_2px_4px_rgba(54,36,15,0.05),0_18px_34px_-26px_rgba(54,36,15,0.4)]"
-    >
-      {/* Image — opens the detail sheet; the tinted backdrop tracks the
-          selected colour, so switching colour shifts the whole frame even
-          for products that have no photo yet. */}
-      <button
-        type="button"
-        onClick={openDetail}
-        aria-label={`ดูรายละเอียด ${card.modelName}`}
-        className="group block w-full cursor-pointer bg-panel"
-      >
-        <div className="relative w-full aspect-[25/18] overflow-hidden">
-          <div
-            className="absolute inset-0 transition-[background] duration-[350ms] ease-out"
-            style={{ background: tintFor(selected?.color || '') }}
-          />
-          {displayImage ? (
-            <AnimatePresence initial={false}>
-              <motion.img
-                key={displayImage}
-                src={displayImage}
-                alt={`${card.modelName} ${selected?.color || ''}`}
-                loading="lazy"
-                referrerPolicy="no-referrer"
-                initial={{ opacity: 0, scale: reduce ? 1 : 1.04 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3, ease: 'easeOut' }}
-                className={`absolute inset-0 w-full h-full object-cover ${
-                  selectedOut
-                    ? 'grayscale-[35%] opacity-70'
-                    : 'transition-transform duration-500 ease-out group-hover:scale-[1.04]'
-                }`}
-              />
-            </AnimatePresence>
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-ink/35">
-              <ImageIcon className="w-7 h-7" />
-              <span className="text-xs tracking-[0.08em]">รูปสินค้า</span>
-            </div>
-          )}
-
-          <span
-            className={`absolute top-3.5 left-3.5 inline-flex items-center gap-1.5 h-[30px] px-3.5 rounded-full text-[13px] font-bold shadow-[0_2px_8px_rgba(54,36,15,0.18)] ${badge.className}`}
-          >
-            {badge.soldOut && <PackageX className="w-3.5 h-3.5" />}
-            {badge.label}
-          </span>
-        </div>
-      </button>
-
-      {/* Body */}
-      <div className="px-[18px] pt-[18px] pb-4">
-        {card.brandName && (
-          <p className="text-xs font-bold text-copper uppercase tracking-[0.12em]">{card.brandName}</p>
-        )}
-        <h3 className="mt-1.5">
-          <button
-            type="button"
-            onClick={openDetail}
-            className="sf-display text-[22px] leading-[1.35] text-bark text-left hover:text-copper transition-colors cursor-pointer"
-          >
-            {card.modelName}
-          </button>
-        </h3>
-        {card.description && (
-          <p className="mt-2 text-sm leading-[1.65] text-muted whitespace-pre-line line-clamp-2 text-pretty">
-            {card.description}
-          </p>
-        )}
-
-        {/* Selected colour: price + remaining stock */}
-        <div className="mt-3.5 flex items-end justify-between gap-3">
-          <span className="text-[30px] font-bold leading-none text-bark tabular-nums">
-            {selected && selected.standard_sale_price > 0 ? formatBaht(selected.standard_sale_price) : 'สอบถามราคา'}
-          </span>
-          <span className={`pb-0.5 text-[13px] whitespace-nowrap ${selectedOut ? 'text-clay' : 'text-stone'}`}>
-            {selectedOut ? 'สีนี้หมดชั่วคราว' : `เหลือ ${selected!.qty_in_stock} ชิ้น`}
-          </span>
-        </div>
-
-        {/* Colour selector — a scrollable rail of full-name pills, so the
-            colour and its remaining count are both readable at a glance. */}
-        <div className="mt-4 border-t border-bark/10 pt-3.5">
-          <p className="mb-2.5 text-[13px] text-muted">
-            {card.variants.length > 1 ? 'เลือกสี' : 'สี'}
-            {selected && <> — <span className="font-bold text-bark">{selected.color}</span></>}
-          </p>
-          <div className="sf-no-scrollbar flex gap-2 overflow-x-auto pb-0.5">
-            {card.variants.map(v => {
-              const vOut = v.qty_in_stock === 0;
-              const isSelected = v.id === selected?.id;
-              return (
-                <button
-                  key={v.id}
-                  type="button"
-                  onClick={() => setSelectedId(v.id)}
-                  title={vOut ? `${v.color} (หมด)` : `${v.color} · เหลือ ${v.qty_in_stock} ชิ้น`}
-                  aria-pressed={isSelected}
-                  className={`shrink-0 inline-flex items-center gap-2.5 h-[46px] pl-2 pr-4 rounded-full border-2 text-sm font-medium cursor-pointer transition-colors ${
-                    isSelected
-                      ? 'bg-shell border-copper text-bark'
-                      : 'bg-paper border-bark/12 text-bister hover:border-tan'
-                  } ${vOut ? 'opacity-55' : ''}`}
-                >
-                  <span
-                    className="w-[26px] h-[26px] rounded-full shrink-0 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.12)]"
-                    style={{ background: colorHex(v.color) }}
-                  />
-                  <span className="whitespace-nowrap">{v.color}</span>
-                  <span className={`text-xs whitespace-nowrap ${vOut ? 'text-clay' : 'text-stone'}`}>
-                    {vOut ? 'หมด' : v.qty_in_stock}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* CTA row — ordering happens in Facebook chat, so the page button is
-            the primary action and "รายละเอียด" sits beside it. */}
-        <div className="mt-4 flex gap-2.5">
-          <FacebookButton
-            className="flex-1 h-[52px] text-base"
-            muted={selectedOut}
-            label={selectedOut ? 'ถามสีอื่น' : 'ทักเพจสั่งสีนี้'}
-          />
-          <button
-            type="button"
-            onClick={openDetail}
-            className="shrink-0 h-[52px] px-4.5 rounded-full bg-cream border-[1.5px] border-bark/15 text-[15px] font-semibold text-bark hover:border-copper cursor-pointer transition-colors"
-          >
-            รายละเอียด
-          </button>
-        </div>
-      </div>
-    </motion.article>
-  );
-};
 
 // Detail-view deep link: shop.html#p=<modelId>
 const hashModelId = () => {
@@ -192,7 +24,34 @@ export const StorefrontPage: React.FC = () => {
   const reduce = useReducedMotion();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBrandId, setSelectedBrandId] = useState<string>('all');
+  const [inStockOnly, setInStockOnly] = useState(false);
+  const [favOnly, setFavOnly] = useState(false);
   const [detail, setDetail] = useState<{ modelId: string; variantId?: string } | null>(null);
+  const { favorites, toggle: toggleFavorite, isFavorite } = useFavorites();
+
+  // Transient confirmations for actions with no other visible result.
+  const [toast, setToast] = useState('');
+  const toastTimer = useRef<number>(0);
+  const flash = useCallback((message: string) => {
+    setToast(message);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(''), 2200);
+  }, []);
+  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+
+  const onToggleFavorite = useCallback((modelId: string) => {
+    flash(toggleFavorite(modelId) ? 'เพิ่มในรายการโปรดแล้ว' : 'เอาออกจากรายการโปรดแล้ว');
+  }, [toggleFavorite, flash]);
+
+  // Condense the sticky bar (reveal the compact logo) once the hero scrolls
+  // away, and offer a way back up once the catalog is deep.
+  const { scrollY } = useScroll();
+  const [condensed, setCondensed] = useState(false);
+  const [showTop, setShowTop] = useState(false);
+  useMotionValueEvent(scrollY, 'change', v => {
+    setCondensed(v > 180);
+    setShowTop(v > 700);
+  });
 
   // Opening pushes a #p=<modelId> history entry so the browser back button
   // closes the detail view and product links are shareable.
@@ -280,6 +139,8 @@ export const StorefrontPage: React.FC = () => {
     const q = searchQuery.toLowerCase().trim();
     return modelCards.filter(card => {
       if (selectedBrandId !== 'all' && card.brandId !== selectedBrandId) return false;
+      if (inStockOnly && card.totalStock === 0) return false;
+      if (favOnly && !favorites.includes(card.modelId)) return false;
       if (!q) return true;
       return (
         card.modelName.toLowerCase().includes(q) ||
@@ -288,249 +149,325 @@ export const StorefrontPage: React.FC = () => {
         card.variants.some(v => v.color.toLowerCase().includes(q))
       );
     });
-  }, [modelCards, searchQuery, selectedBrandId]);
+  }, [modelCards, searchQuery, selectedBrandId, inStockOnly, favOnly, favorites]);
 
   const detailCard = detail ? modelCards.find(c => c.modelId === detail.modelId) : undefined;
 
-  const hasFilter = searchQuery.trim() !== '' || selectedBrandId !== 'all';
-  const clearFilters = () => { setSearchQuery(''); setSelectedBrandId('all'); };
+  const hasFilter = searchQuery.trim() !== '' || selectedBrandId !== 'all' || inStockOnly || favOnly;
+  const clearFilters = useCallback(() => {
+    setSearchQuery('');
+    setSelectedBrandId('all');
+    setInStockOnly(false);
+    setFavOnly(false);
+  }, []);
 
-  const chipBase = 'shrink-0 h-10 px-4 rounded-full border-[1.5px] text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer';
-  const chipActive = 'bg-bark text-paper border-bark';
-  const chipIdle = 'bg-transparent text-muted border-bark/15 hover:border-copper hover:text-bark';
-
-  // Everything except the card list shares this shape: a full-width notice
-  // card in the column, matching the product cards' radius.
-  const notice = 'rounded-[26px] border p-8 text-center';
+  const gridClass = 'grid gap-4 grid-cols-[repeat(auto-fill,minmax(min(46%,250px),1fr))]';
 
   return (
-    <div className="sf min-h-screen flex justify-center">
-      <div className="relative w-full max-w-[440px] min-h-screen bg-paper shadow-[0_0_60px_rgba(54,36,15,0.18)]">
-        {/* ── Hero ───────────────────────────────────────────────────────── */}
-        <header
-          className="relative overflow-hidden px-5 pt-5 pb-6.5 text-paper"
-          style={{ background: 'radial-gradient(130% 100% at 15% 0%, #4a3316 0%, #36240f 60%, #2a1b0b 100%)' }}
+    <div className="sf min-h-screen">
+      <ScrollProgress />
+
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
+      <header className="relative overflow-hidden text-paper bg-bark">
+        <div
+          className="absolute inset-0"
+          style={{ background: 'radial-gradient(130% 100% at 12% 0%, #55391a 0%, #36240f 52%, #251808 100%)' }}
+        />
+        <motion.div
+          className="absolute inset-0 text-dune"
+          initial={reduce ? false : { opacity: 0 }}
+          animate={{ opacity: 0.55 }}
+          transition={{ duration: 1.2, ease: 'easeOut' }}
         >
+          <ContourField height={620} lines={7} className="w-full h-full" />
+        </motion.div>
+        {/* soft fade into the marquee below */}
+        <div className="absolute inset-x-0 bottom-0 h-24 bg-linear-to-b from-transparent to-bark/85" />
+
+        <div className="relative max-w-5xl mx-auto px-5 pt-7 pb-14 sm:pt-8 sm:pb-16">
           <motion.div
-            initial={reduce ? false : { opacity: 0, y: 12 }}
+            initial={reduce ? false : { opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, ease: 'easeOut' }}
             className="flex items-center gap-3"
           >
-            <div className="w-[46px] h-[46px] shrink-0 rounded-[14px] overflow-hidden bg-white/12 ring-1 ring-white/25">
+            <div className="w-13 h-13 rounded-[18px] overflow-hidden ring-1 ring-white/25 bg-white/10 backdrop-blur shrink-0">
               <img src={logoImg} alt={STORE.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             </div>
             <div>
-              <p className="sf-display text-xl leading-[1.1]">{STORE.name}</p>
-              <p className="mt-1 text-[13px] text-dune">{STORE.tagline}</p>
+              <p className="sf-display text-[21px] leading-none text-paper">{STORE.name}</p>
+              <p className="text-[11.5px] text-sand mt-1.5 flex items-center gap-1">
+                <Tent className="w-3 h-3 shrink-0" /> {STORE.tagline}
+              </p>
             </div>
           </motion.div>
 
           <motion.h1
-            initial={reduce ? false : { opacity: 0, y: 16 }}
+            initial={reduce ? false : { opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.08, ease: 'easeOut' }}
-            className="sf-display mt-5.5 max-w-[300px] text-[30px] leading-[1.25] text-pretty"
+            className="sf-display text-3xl sm:text-5xl leading-[1.15] mt-10 max-w-[15ch] text-pretty"
           >
             {STORE.heroLead}
           </motion.h1>
           <motion.p
-            initial={reduce ? false : { opacity: 0, y: 16 }}
+            initial={reduce ? false : { opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.16, ease: 'easeOut' }}
-            className="mt-2.5 max-w-[320px] text-[15px] leading-[1.6] text-white/80"
+            className="text-sm sm:text-[17px] text-white/78 mt-3.5 max-w-[42ch] leading-[1.75]"
           >
             {STORE.heroSub}
           </motion.p>
 
           <motion.div
-            initial={reduce ? false : { opacity: 0, y: 16 }}
+            initial={reduce ? false : { opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.24, ease: 'easeOut' }}
-            className="mt-4.5 flex flex-wrap gap-2.5 text-[13px] text-white/75"
+            className="mt-6.5 flex flex-wrap items-center gap-3"
           >
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-1.5">
-              <Truck className="w-3.5 h-3.5 text-dune" /> ส่งไว 1–2 วัน
+            <FacebookButton onDark className="text-[15px] min-h-11.5 py-3 px-6 shadow-[0_10px_24px_-12px_rgba(0,0,0,0.6)]" />
+            <span className="inline-flex items-center gap-1.5 text-[12.5px] text-white/72 px-3.5 py-2 rounded-full bg-white/7 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]">
+              <span className="w-1.5 h-1.5 rounded-full bg-moss shadow-[0_0_0_3px_rgba(143,191,90,0.25)]" />
+              <Truck className="w-3.5 h-3.5 text-sand" /> พร้อมส่งใน 1–2 วัน
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-1.5">
-              <MessageCircle className="w-3.5 h-3.5 text-dune" /> ทักถามได้ก่อนสั่ง
+            <span className="inline-flex items-center gap-1.5 text-[12.5px] text-white/72 px-3.5 py-2 rounded-full bg-white/7 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]">
+              <MessageCircle className="w-3.5 h-3.5 text-sand" /> ทักถามได้ก่อนสั่ง
             </span>
           </motion.div>
-        </header>
+        </div>
+      </header>
 
-        {/* ── Sticky toolbar: search + brand filter ──────────────────────── */}
-        <div className="sticky top-0 z-30 border-b border-bark/10 bg-paper/95 px-4 pt-3 pb-2.5 backdrop-blur-md">
-          <div className="flex h-[52px] items-center gap-2.5 rounded-full border-[1.5px] border-bark/15 bg-cream px-4 focus-within:border-copper transition-colors">
-            <Search className="w-[18px] h-[18px] shrink-0 text-tan" />
-            <input
-              type="text"
-              placeholder="ค้นหารุ่น ยี่ห้อ หรือสี"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              aria-label="ค้นหาสินค้า"
-              className="h-full min-w-0 flex-1 bg-transparent text-base text-ink outline-hidden placeholder:text-tan"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                aria-label="ล้างคำค้นหา"
-                className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full bg-bark/8 text-muted hover:bg-bark/15 hover:text-bark cursor-pointer transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
+      <TrustMarquee />
+
+      {/* ── Sticky toolbar: search + filters (compact logo appears on scroll) ── */}
+      <div className="sticky top-0 z-30 bg-paper/90 backdrop-blur-md border-b border-bark/10">
+        <div className="max-w-5xl mx-auto px-5 py-3 space-y-3">
+          <div className="flex items-center gap-2.5">
+            <AnimatePresence>
+              {condensed && (
+                <motion.div
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: 'auto' }}
+                  exit={{ opacity: 0, width: 0 }}
+                  transition={{ duration: 0.25 }}
+                  className="flex items-center gap-2 shrink-0 overflow-hidden"
+                >
+                  <div className="w-8.5 h-8.5 rounded-xl overflow-hidden ring-1 ring-bark/15 shrink-0">
+                    <img src={logoImg} alt={STORE.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  </div>
+                  <span className="sf-display text-base text-bark whitespace-nowrap hidden sm:block">{STORE.name}</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Search */}
+            <div className="flex-1 flex items-center gap-2 min-h-11.5 rounded-full bg-cream border border-bark/14 px-4 focus-within:border-copper transition-colors">
+              <Search className="w-4 h-4 text-tan shrink-0" />
+              <input
+                type="text"
+                placeholder="ค้นหา เช่น เต็นท์ เก้าอี้ หรือสี…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="text-sm text-ink outline-hidden w-full bg-transparent placeholder:text-tan py-3"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="ล้างคำค้นหา"
+                  className="w-6.5 h-6.5 rounded-full bg-bark/8 text-muted hover:bg-bark/15 hover:text-bark flex items-center justify-center cursor-pointer shrink-0 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <FacebookButton className="hidden md:inline-flex text-xs py-2.5 px-4 shrink-0" />
           </div>
 
-          {brandsWithProducts.length > 0 && (
-            <div className="sf-no-scrollbar mt-2.5 flex gap-2 overflow-x-auto pb-0.5">
-              <button
-                onClick={() => setSelectedBrandId('all')}
-                aria-pressed={selectedBrandId === 'all'}
-                className={`${chipBase} ${selectedBrandId === 'all' ? chipActive : chipIdle}`}
-              >
-                ทั้งหมด
-              </button>
-              {brandsWithProducts.map(brand => (
-                <button
-                  key={brand.id}
-                  onClick={() => setSelectedBrandId(brand.id)}
-                  aria-pressed={selectedBrandId === brand.id}
-                  className={`${chipBase} ${selectedBrandId === brand.id ? chipActive : chipIdle}`}
-                >
-                  {brand.name}
+          {/* Brand filter + stock / favourites toggles */}
+          <div className="flex flex-wrap items-center gap-2">
+            {brandsWithProducts.length > 0 && (
+              <>
+                <button onClick={() => setSelectedBrandId('all')} className={chipClass(selectedBrandId === 'all')}>
+                  ทั้งหมด
                 </button>
-              ))}
-            </div>
-          )}
-        </div>
+                {brandsWithProducts.map(brand => (
+                  <button
+                    key={brand.id}
+                    onClick={() => setSelectedBrandId(brand.id)}
+                    className={chipClass(selectedBrandId === brand.id)}
+                  >
+                    {brand.name}
+                  </button>
+                ))}
+              </>
+            )}
 
-        {/* ── Catalog ────────────────────────────────────────────────────── */}
-        <main className="px-4 pt-4 pb-7">
-          {!isSupabaseConfigured ? (
-            <div className={`${notice} border-tan/40 bg-cream`}>
-              <h2 className="sf-display text-lg text-bark">ยังไม่ได้ตั้งค่าระบบ</h2>
-              <p className="mt-2 text-sm text-muted">ไม่พบการตั้งค่า Supabase กรุณาติดต่อผู้ดูแลระบบ</p>
-            </div>
-          ) : loading ? (
-            <div className="flex flex-col gap-[18px]">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="overflow-hidden rounded-[26px] border border-bark/10 bg-paper">
-                  <div className="w-full aspect-[25/18] sf-shimmer" />
-                  <div className="space-y-3 p-[18px]">
-                    <div className="h-2.5 w-1/4 rounded sf-shimmer" />
-                    <div className="h-5 w-2/3 rounded sf-shimmer" />
-                    <div className="h-7 w-1/3 rounded sf-shimmer" />
-                    <div className="h-[46px] w-3/5 rounded-full sf-shimmer" />
-                  </div>
+            <span className="flex-1 min-w-2" />
+
+            <button
+              onClick={() => setInStockOnly(v => !v)}
+              aria-pressed={inStockOnly}
+              className={chipClass(inStockOnly)}
+            >
+              <span
+                className={`w-1.75 h-1.75 rounded-full transition-[background-color,box-shadow] ${
+                  inStockOnly ? 'bg-moss shadow-[0_0_0_3px_rgba(143,191,90,0.28)]' : 'bg-tan/60'
+                }`}
+              />
+              มีของพร้อมส่ง
+            </button>
+            <button
+              onClick={() => setFavOnly(v => !v)}
+              aria-pressed={favOnly}
+              className={chipClass(favOnly)}
+            >
+              <Heart className="w-3.5 h-3.5" fill={favOnly ? 'currentColor' : 'none'} />
+              รายการโปรด{favorites.length > 0 && ` (${favorites.length})`}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Catalog ──────────────────────────────────────────────────────── */}
+      <main className="max-w-5xl mx-auto px-5 py-6">
+        {!isSupabaseConfigured ? (
+          <div className="bg-cream border border-tan/40 rounded-3xl p-8 text-center max-w-md mx-auto space-y-2">
+            <h2 className="sf-display text-lg text-bark">ยังไม่ได้ตั้งค่าระบบ</h2>
+            <p className="text-sm text-muted">ไม่พบการตั้งค่า Supabase กรุณาติดต่อผู้ดูแลระบบ</p>
+          </div>
+        ) : loading ? (
+          <div className={gridClass}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="bg-cream rounded-3xl border border-bark/10 overflow-hidden">
+                <div className="w-full aspect-square sf-shimmer" />
+                <div className="p-4 space-y-2.5">
+                  <div className="h-2.5 sf-shimmer rounded w-1/3" />
+                  <div className="h-4 sf-shimmer rounded w-2/3" />
+                  <div className="h-5 sf-shimmer rounded w-1/2 mt-3" />
+                  <div className="h-[5px] sf-shimmer rounded-full" />
                 </div>
-              ))}
+              </div>
+            ))}
+          </div>
+        ) : error ? (
+          <div className="bg-cream border border-clay/30 rounded-3xl p-8 text-center max-w-md mx-auto space-y-3">
+            <h2 className="sf-display text-lg text-bark">โหลดข้อมูลสินค้าไม่สำเร็จ</h2>
+            <p className="text-sm text-muted">กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง</p>
+            <button
+              onClick={retry}
+              className="inline-flex items-center gap-2 bg-copper hover:bg-bark2 text-white text-sm font-semibold py-2.5 px-5 rounded-full cursor-pointer transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" /> ลองใหม่
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-baseline justify-between gap-2.5 mb-4">
+              <h2 className="sf-eyebrow sf-display text-xl text-bark">
+                {selectedBrandId === 'all'
+                  ? 'สินค้าทั้งหมด'
+                  : brandsWithProducts.find(b => b.id === selectedBrandId)?.name || 'สินค้า'}
+              </h2>
+              <div className="flex items-center gap-3">
+                <AnimatePresence mode="popLayout">
+                  <motion.span
+                    key={filteredCards.length}
+                    initial={reduce ? false : { opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 6 }}
+                    transition={{ duration: 0.2 }}
+                    className="text-[12.5px] text-muted tabular-nums"
+                  >
+                    {filteredCards.length} รายการ
+                  </motion.span>
+                </AnimatePresence>
+                {hasFilter && (
+                  <button
+                    onClick={clearFilters}
+                    className="text-[12.5px] font-semibold text-copper hover:text-bark cursor-pointer py-1.5"
+                  >
+                    ล้างตัวกรอง
+                  </button>
+                )}
+              </div>
             </div>
-          ) : error ? (
-            <div className={`${notice} border-clay/30 bg-cream`}>
-              <h2 className="sf-display text-lg text-bark">โหลดข้อมูลสินค้าไม่สำเร็จ</h2>
-              <p className="mt-2 text-sm text-muted">กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง</p>
-              <button
-                onClick={retry}
-                className="mt-4 inline-flex h-12 items-center gap-2 rounded-full bg-copper px-5 text-sm font-bold text-white hover:bg-bark2 cursor-pointer transition-colors"
-              >
-                <RefreshCw className="w-4 h-4" /> ลองใหม่
-              </button>
-            </div>
-          ) : (
-            <>
-              <div className="mx-0.5 mt-1 mb-3.5 flex items-baseline justify-between gap-3">
-                <h2 className="sf-display text-[19px] text-bark">
-                  {selectedBrandId === 'all'
-                    ? 'สินค้าทั้งหมด'
-                    : brandsWithProducts.find(b => b.id === selectedBrandId)?.name || 'สินค้า'}
-                </h2>
-                <div className="flex items-center gap-3">
-                  <AnimatePresence mode="popLayout">
-                    <motion.span
-                      key={filteredCards.length}
-                      initial={reduce ? false : { opacity: 0, y: -6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 6 }}
-                      transition={{ duration: 0.2 }}
-                      className="text-[13px] text-muted tabular-nums"
-                    >
-                      {filteredCards.length} รายการ
-                    </motion.span>
-                  </AnimatePresence>
+
+            {filteredCards.length === 0 ? (
+              <div className="relative bg-bark text-paper rounded-[26px] p-10 text-center max-w-md mx-auto my-8 overflow-hidden">
+                <div className="absolute inset-0 text-dune opacity-40">
+                  <ContourField height={320} lines={4} className="w-full h-full" />
+                </div>
+                <div className="relative flex flex-col items-center gap-3">
+                  <div className="w-11.5 h-11.5 rounded-full bg-white/10 flex items-center justify-center sf-bob">
+                    <Tent className="w-5.5 h-5.5 text-sand" />
+                  </div>
+                  <p className="text-[15px] text-white/85">
+                    {modelCards.length === 0 ? 'ยังไม่มีสินค้าในร้านตอนนี้' : 'ไม่พบสินค้าตามที่เลือก ลองล้างตัวกรองดูนะ'}
+                  </p>
                   {hasFilter && (
                     <button
                       onClick={clearFilters}
-                      className="text-[13px] font-bold text-copper underline underline-offset-[3px] hover:text-bark cursor-pointer"
+                      className="bg-paper text-bark text-sm font-semibold min-h-11 px-5.5 rounded-full cursor-pointer transition-transform hover:-translate-y-0.5"
                     >
                       ล้างตัวกรอง
                     </button>
                   )}
                 </div>
               </div>
+            ) : (
+              <motion.div
+                initial="hidden"
+                animate="show"
+                variants={{ show: { transition: { staggerChildren: reduce ? 0 : 0.04 } } }}
+                className={gridClass}
+              >
+                {filteredCards.map(card => (
+                  <ProductCard
+                    key={card.modelId}
+                    card={card}
+                    isFavorite={isFavorite(card.modelId)}
+                    onToggleFavorite={onToggleFavorite}
+                    onOpenDetail={openDetail}
+                  />
+                ))}
+              </motion.div>
+            )}
+          </>
+        )}
+      </main>
 
-              {filteredCards.length === 0 ? (
-                <div className="rounded-[26px] bg-bark px-6 py-9 text-center text-paper">
-                  <Tent className="mx-auto w-9 h-9 text-dune" />
-                  <p className="mt-3 text-base leading-[1.6] text-white/85">
-                    {modelCards.length === 0
-                      ? 'ยังไม่มีสินค้าในร้านตอนนี้ ทักเพจมาถามได้เลย'
-                      : 'ไม่เจอสินค้าที่ค้นหา ลองคำอื่น หรือดูสินค้าทั้งหมดก็ได้'}
-                  </p>
-                  {modelCards.length > 0 && (
-                    <button
-                      onClick={clearFilters}
-                      className="mt-4 h-12 rounded-full bg-paper px-5.5 text-[15px] font-bold text-bark hover:bg-white cursor-pointer transition-colors"
-                    >
-                      ดูสินค้าทั้งหมด
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <motion.div
-                  initial="hidden"
-                  animate="show"
-                  variants={{ show: { transition: { staggerChildren: reduce ? 0 : 0.05 } } }}
-                  className="flex flex-col gap-[18px]"
-                >
-                  {filteredCards.map(card => (
-                    <ProductCard key={card.modelId} card={card} onOpenDetail={openDetail} />
-                  ))}
-                </motion.div>
-              )}
-            </>
-          )}
-        </main>
-
-        {/* ── Contact footer ─────────────────────────────────────────────── */}
-        <footer
-          className="px-6 pt-8.5 pb-10 text-center text-paper"
-          style={{ background: 'radial-gradient(120% 100% at 20% 0%, #432e13 0%, #36240f 60%, #2a1b0b 100%)' }}
-        >
-          <h2 className="sf-display text-2xl leading-[1.35]">สนใจรุ่นไหน ทักมาเลย</h2>
-          <p className="mx-auto mt-2.5 max-w-[300px] text-sm leading-[1.7] text-white/72">
-            ยังสั่งผ่านเว็บไม่ได้นะ ทักเข้าเพจมา เดี๋ยวเราช่วยจัดของและสรุปยอดให้
+      {/* ── Contact footer ───────────────────────────────────────────────── */}
+      <footer className="relative overflow-hidden bg-bark text-paper mt-13">
+        <div className="absolute inset-0 text-dune opacity-35">
+          <ContourField height={320} lines={4} className="w-full h-full" />
+        </div>
+        <div className="relative max-w-xl mx-auto px-5 py-14 text-center flex flex-col items-center gap-4">
+          <h2 className="sf-display text-2xl sm:text-[32px]">สนใจสั่งซื้อ ทักเราได้เลย</h2>
+          <p className="text-sm text-white/72 max-w-[34ch] leading-[1.8]">
+            ตอนนี้ยังสั่งซื้อผ่านเว็บไม่ได้ — ทักเข้ามาที่เพจ เดี๋ยวเราช่วยจัดของและสรุปยอดให้
           </p>
-          <FacebookButton
-            onDark
-            className="mt-4.5 h-[54px] px-6.5 text-base"
-            label={`ทักเพจ ${STORE.name}`}
-          />
-          <p className="mt-5.5 text-xs text-[#b9986f]">© {STORE.name}</p>
-        </footer>
+          <FacebookButton onDark className="text-[15px] min-h-11.5 py-3.5 px-6.5" />
+          <p className="text-[11.5px] text-dune pt-3">© {STORE.name}</p>
+        </div>
+      </footer>
 
-        {/* ── Product detail sheet ───────────────────────────────────────── */}
-        <AnimatePresence>
-          {detail && detailCard && (
-            <ProductDetailModal
-              key={detailCard.modelId}
-              card={detailCard}
-              initialVariantId={detail.variantId}
-              onClose={closeDetail}
-            />
-          )}
-        </AnimatePresence>
-      </div>
+      <ScrollTopButton show={showTop} onClick={() => window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' })} />
+      <Toast message={toast} />
+
+      {/* ── Product detail modal ─────────────────────────────────────────── */}
+      <AnimatePresence>
+        {detail && detailCard && (
+          <ProductDetailModal
+            key={detailCard.modelId}
+            card={detailCard}
+            initialVariantId={detail.variantId}
+            onClose={closeDetail}
+            onToast={flash}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
