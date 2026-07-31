@@ -7,7 +7,7 @@ import { ModelCard, PublicVariant } from './types';
 // TODO: แทนที่ด้วยข้อมูลจริงของร้าน (ลิงก์เพจ Facebook ที่ถูกต้อง)
 export const STORE = {
   name: 'Buddy Camp',
-  tagline: 'อุปกรณ์แคมป์ปิ้งพร้อมส่ง · ส่งจากเชียงใหม่',
+  tagline: 'อุปกรณ์แคมป์ปิ้งพร้อมส่ง',
   heroLead: 'พร้อมออกเดินทางได้ทุกสุดสัปดาห์',
   heroSub: 'เลือกดูสินค้าและราคาล่าสุด กดเลือกสีเพื่อดูของจริง เจอที่ถูกใจแล้วทักเพจสั่งได้เลย',
   facebookUrl: 'https://www.facebook.com/buddycampingstore',
